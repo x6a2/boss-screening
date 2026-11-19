@@ -32,9 +32,13 @@
 ```bash
 python -m bosscreen.cli demo          # 用内置样例跑一遍：解析 → 打分 → 打印名单
 python -m bosscreen.cli serve --mock  # 打开本地看板 http://127.0.0.1:8686/
+python -m bosscreen.cli doctor        # 自检：配置、浏览器、选择器
 ```
 
-不需要浏览器、不需要账号、不联网。
+不需要浏览器、不需要账号、不联网（`doctor` 除外，它只连你本机已开着的 Chrome）。
+
+也可以 `pip install -e .` 后用 `bosscreen demo`。注意这一步要联网拉 setuptools；
+离线机器直接用 `python -m bosscreen` 即可，功能完全一样。
 
 ![看板](docs/img/board.png)
 

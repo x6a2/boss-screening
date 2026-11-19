@@ -14,6 +14,7 @@ from .requirement import load_requirement
 from .scoring import rank
 from .store import Store
 from .web import serve
+from . import transport
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -92,30 +93,51 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     notes.append(f"工作目录 {ROOT}")
 
-    sel_path = ROOT / "config" / "selectors.boss.json"
+    sel_path = Path(args.selectors) if args.selectors else ROOT / "config" / "selectors.boss.json"
     if not sel_path.exists():
         problems.append(
-            "缺少 config/selectors.boss.json —— 采集层无法工作。"
+            f"缺少选择器配置：{sel_path} —— 采集层无法工作。"
             "从 config/selectors.boss.example.json 复制一份。"
         )
     else:
         try:
-            problems.extend(check_selectors(load_selectors(sel_path)))
+            sel = load_selectors(sel_path)
+            problems.extend(check_selectors(sel))
+            if not sel.get("calibrated"):
+                problems.append("选择器未校准（calibrated=false）：里面的 TODO 值需要真机确认")
         except json.JSONDecodeError as exc:
             problems.append(f"选择器配置不是合法 JSON：{exc}")
 
     cfg = load_config()
     notes.append(f"限速 {cfg.throttle_min_seconds}-{cfg.throttle_max_seconds}s，日上限 {cfg.daily_page_limit} 页")
 
+    # --- 浏览器可达性（只读，不点任何东西）----------------------------
+    ports = tuple(args.ports) if args.ports else transport.DEFAULT_PORTS
+    probe = transport.probe(ports)
+    if probe.port is None:
+        problems.append(
+            f"{ports} 上没有发现开着调试端口的 Chrome。"
+            "自己启动一个带 --remote-debugging-port 的 Chrome 并登录招聘端后再来。"
+        )
+    else:
+        notes.append(f"Chrome 已连接（{probe.browser or '版本未知'}）@ 端口 {probe.port}，{probe.page_count} 个标签页")
+        for title, url in probe.zhipin_pages[:5]:
+            notes.append(f"BOSS 页面：{title or '(无标题)'} — {url[:90]}")
+        if probe.recruiter_page:
+            notes.append(f"招聘端页面已就绪：{probe.recruiter_page[:90]}")
+        else:
+            problems.append(probe.blocked_reason)
+
     print("自检结果：")
     for n in notes:
         print(f"  ok   {n}")
     for p in problems:
         print(f"  问题 {p}")
+
     if problems:
-        print("\n结论：当前状态无法采集真实简历，但 demo / 打分链路可用。")
+        print("\n结论：当前状态无法采集真实简历，但 demo / 打分 / 看板链路可用。")
         return 1
-    print("\n结论：配置齐全。采集仍需真实招聘账号验证。")
+    print("\n结论：配置齐全，可以尝试采集（选择器仍需第一次运行时核对）。")
     return 0
 
 
@@ -162,7 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     p_score.add_argument("--json", action="store_true", help="同时输出 JSON")
     p_score.set_defaults(func=cmd_score)
 
-    p_doc = sub.add_parser("doctor", help="自检：配置、依赖、选择器")
+    p_doc = sub.add_parser("doctor", help="自检：配置、依赖、浏览器与选择器")
+    p_doc.add_argument("--ports", type=int, nargs="*", help="要探测的 Chrome 调试端口")
+    p_doc.add_argument("--selectors", default=None, help="选择器配置路径")
     p_doc.set_defaults(func=cmd_doctor)
 
     p_col = sub.add_parser("collect", help="（未实现）从浏览器读取投递列表")

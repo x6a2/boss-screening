@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .draft import build_draft
 from .models import Candidate, Requirement, ScoreResult
+from .scoring import degree_level
 
 PAGE = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -31,10 +32,15 @@ PAGE = """<!doctype html>
   .side { width:420px; border-left:1px solid var(--line); padding:20px; overflow:auto;
           background:var(--panel); display:none; }
   .side.on { display:block; }
-  .filters { padding:12px 24px; display:flex; gap:8px; border-bottom:1px solid var(--line); }
+  .filters { padding:12px 24px; display:flex; gap:8px; border-bottom:1px solid var(--line);
+             align-items:center; flex-wrap:wrap; }
   .filters button { background:transparent; color:var(--dim); border:1px solid var(--line);
                     padding:4px 10px; border-radius:999px; cursor:pointer; font-size:13px; }
   .filters button.on { color:var(--text); border-color:var(--accent); background:#1b2534; }
+  select { background:var(--panel); color:var(--text); border:1px solid var(--line);
+           border-radius:6px; padding:4px 8px; font-size:13px; }
+  .chk { color:var(--dim); font-size:13px; display:flex; gap:6px; align-items:center;
+         margin-left:auto; cursor:pointer; }
   table { width:100%; border-collapse:collapse; }
   th { position:sticky; top:0; background:var(--bg); text-align:left; font-weight:500;
        color:var(--dim); font-size:12px; padding:10px 12px; border-bottom:1px solid var(--line); }
@@ -71,6 +77,9 @@ PAGE = """<!doctype html>
   <button data-f="pass">达到阈值</button>
   <button data-f="pending">待确认</button>
   <button data-f="fail">未过硬条件</button>
+  <select id="city"><option value="">全部城市</option></select>
+  <select id="deg"><option value="">不限学历</option></select>
+  <label class="chk"><input type="checkbox" id="fullonly"> 只看资料完整</label>
 </div>
 <div class="body">
   <div class="list"><table>
@@ -81,15 +90,23 @@ PAGE = """<!doctype html>
   <aside class="side" id="side"></aside>
 </div>
 <script>
-let DATA = {req:null, rows:[]}, FILTER = 'all', CUR = null;
+let DATA = {req:null, rows:[], facets:{cities:[],degrees:[]}};
+let FILTER = 'all', CUR = null, CITY = '', DEG = '', FULL = false, DEGS = [];
 const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const flag = r => !r.passed_must ? ['未过','t-bad'] : (r.pending.length ? ['待确认','t-warn'] : ['通过','t-ok']);
 
+// 未知值不隐藏：筛选只排除"明确不符合"的人
+const cityOk = c => !CITY || !(c.expect_city||[]).length || c.expect_city.includes(CITY);
+const degreeOk = c => !DEG || !c.degree || (DEGS.indexOf(c.degree) >= 0 && DEGS.indexOf(c.degree) <= DEGS.indexOf(DEG));
+
 function render() {
-  const rows = DATA.rows.filter(r => FILTER === 'all' ? true
-    : FILTER === 'pass' ? (r.passed_must && r.total >= DATA.req.threshold)
-    : FILTER === 'pending' ? (r.passed_must && r.pending.length)
-    : !r.passed_must);
+  const rows = DATA.rows.filter(r => {
+    const base = FILTER === 'all' ? true
+      : FILTER === 'pass' ? (r.passed_must && r.total >= DATA.req.threshold)
+      : FILTER === 'pending' ? (r.passed_must && r.pending.length)
+      : !r.passed_must;
+    return base && cityOk(r.cand) && degreeOk(r.cand) && (!FULL || r.coverage >= 1);
+  });
   document.getElementById('rows').innerHTML = rows.map(r => {
     const [txt, cls] = flag(r);
     return `<tr class="row" data-uid="${esc(r.uid)}">
@@ -102,8 +119,9 @@ function render() {
   document.querySelectorAll('tr.row').forEach(tr =>
     tr.onclick = () => open(tr.dataset.uid));
   const pass = DATA.rows.filter(r => r.passed_must && r.total >= DATA.req.threshold).length;
+  const shown = rows.length === DATA.rows.length ? '' : ` · 当前显示 ${rows.length} 人`;
   document.getElementById('stat').textContent =
-    `共 ${DATA.rows.length} 人 · 达到阈值 ${pass} 人`;
+    `共 ${DATA.rows.length} 人 · 达到阈值 ${pass} 人${shown}`;
 }
 
 function open(uid) {
@@ -149,9 +167,16 @@ document.querySelectorAll('#filters button').forEach(b => b.onclick = () => {
   document.querySelectorAll('#filters button').forEach(x => x.classList.toggle('on', x === b));
   render();
 });
+document.getElementById('city').onchange = e => { CITY = e.target.value; render(); };
+document.getElementById('deg').onchange = e => { DEG = e.target.value; render(); };
+document.getElementById('fullonly').onchange = e => { FULL = e.target.checked; render(); };
 
 fetch('/api/board').then(r => r.json()).then(d => {
   DATA = d;
+  DEGS = d.facets.degrees;
+  const citySel = document.getElementById('city'), degSel = document.getElementById('deg');
+  d.facets.cities.forEach(c => citySel.add(new Option(c, c)));
+  DEGS.forEach(c => degSel.add(new Option(c + '及以上', c)));
   document.getElementById('req').textContent = d.req.name;
   render();
 });
@@ -174,10 +199,20 @@ class Board:
         self.cands = {c.uid: c for c in (cands or [])}
 
     def payload(self) -> dict:
+        cities: set[str] = set()
+        degrees: set[str] = set()
+        for c in self.cands.values():
+            cities.update(c.expect_city or [])
+            if c.degree:
+                degrees.add(c.degree)
         return {
             "req": {
                 "name": self.req.name,
                 "threshold": self.req.threshold,
+            },
+            "facets": {
+                "cities": sorted(cities),
+                "degrees": sorted(degrees, key=lambda d: degree_level(d) or 0, reverse=True),
             },
             "rows": [
                 {**r.__dict__, "cand": asdict(self.cands[r.uid]) if r.uid in self.cands else {}}

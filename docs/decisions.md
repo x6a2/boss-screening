@@ -59,3 +59,17 @@
 **决定**：MIT。
 
 **为什么**：与"重写"配套；限制少、可被引用。合规与风险由 README 的声明承担，而不是靠许可证。
+
+## D9 自研最小 CDP 客户端，不复用 BossHunter 的 3456 代理
+
+**决定**：`cdp.py` 用标准库手写 WebSocket（握手 + 掩码帧 + ping/pong），直接连 Chrome 的 `webSocketDebuggerUrl`。`transport.py` 只做 HTTP 侧（`/json/version`、`/json/list`、`/json/new`、`/json/close`）。
+
+**为什么**：BossHunter 的 Node 代理是它自己的运行时，依赖它等于把两套工具绑死；而 CDP 只需要一个很薄的客户端。代价是约 200 行协议代码，换来的是零外部依赖、可单独验证（headless Chrome 上 `1+1`、`navigator.userAgent`、DOM 读取都已实测通过）。
+
+**边界**：只支持 `ws://` + 文本帧；不处理压缩扩展与二进制帧。够用就行。
+
+## D10 未知一律计入分母，且筛选不隐藏未知
+
+**决定**：`total = 100 * hit_w / total_w`（`total_w` 含未知项权重），同时给出 `coverage = judged_w / total_w`。看板的城市/学历筛选只排除"明确不符合"的人，未知值仍然显示。
+
+**为什么**：第一版把未知从分母剔除，导致缺学历缺薪资的候选人拿满分并列第一——在一个筛选工具里这是致命的（资料越少分越高）。修法不是把未知当不满足（那会误杀），而是：不给分、但占分母、并显式标注"待确认/完整度"。

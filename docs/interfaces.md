@@ -4,11 +4,14 @@
 
 ```
 cli.py            命令入口（demo / doctor / collect / serve）
-  ├─ collector/   采集：CDP → 页面 DOM → 原始 dict（唯一依赖浏览器的层）
-  ├─ parsing/     原始 dict → Candidate（纯函数，可单测）
-  ├─ scoring/     需求 × Candidate → ScoreResult（纯函数，可单测）
+  ├─ cdp.py        最小 WebSocket + CDP 客户端（Runtime.evaluate）
+  ├─ transport.py  Chrome 调试端口 HTTP 侧：探测、列标签、开/关标签
+  ├─ collector/   采集：CDP → 页面 DOM → 原始 dict（唯一依赖浏览器的层，未实现）
+  ├─ parsing.py   原始 dict → Candidate（纯函数，可单测）
+  ├─ scoring.py   需求 × Candidate → ScoreResult（纯函数，可单测）
+  ├─ draft.py     候选人 + 评分 → 招呼语文本（纯函数，只出文本）
   ├─ store.py     SQLite 持久化
-  └─ web/         本地看板
+  └─ web.py       本地看板（标准库 http.server）
 ```
 
 **关键约束**：`parsing` 与 `scoring` 是纯函数，不碰网络、不碰浏览器、不碰数据库。

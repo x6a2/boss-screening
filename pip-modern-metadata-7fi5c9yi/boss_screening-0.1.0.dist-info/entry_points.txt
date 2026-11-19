@@ -1,0 +1,2 @@
+[console_scripts]
+bosscreen = bosscreen.cli:main
