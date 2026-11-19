@@ -37,6 +37,7 @@ python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 
 - [x] **列表滚动翻页**：滚到底自动加载（`paging.mode=scroll`），按 href 去重，连续 3 次没有新卡片才认定到底
 - [x] 修掉"新标签页还没加载完就去读"的竞态（新页一开始是 about:blank 且已 complete，会误判为加载完成）
 - [x] **选择器体检 `bosscreen check`**：容器在不在、几条、每个字段命中几个、样本是什么；容器没命中直接退出 3，字段没命中退出 1，全命中才提示可以置 `calibrated=true`
+- [x] **可发布性验证**：全新 `git clone` 到临时目录 → `python -m bosscreen demo` 与 55 条测试都通过；仓库无 pip 临时目录残留
 - [x] 单测 55 条（含 6 条需要 Chrome 的端到端测试，默认跳过：滚动到底 / 短列表不空转 / 详情页紧接打开能读到 / 体检命中数与样本 / 容器错要报告不抛错）
 
 ## 未完成
