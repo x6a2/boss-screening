@@ -20,3 +20,9 @@ Thumbs.db
 *.egg-info/
 build/
 dist/
+pip-build-env*/
+pip-*/
+data/*.db
+data/usage.json
+tests/_usage*.json
+tests/_u.json
