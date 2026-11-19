@@ -12,6 +12,8 @@ from typing import Any
 from .models import Candidate
 
 # 平台原始 dict 的键名映射。改版时只改这张表。
+# 采集层输出的键名是 snake_case（与选择器配置的 fields 键一致），
+# 这里同时接受驼峰写法，方便手工导入的历史数据。
 FIELD_MAP: dict[str, str] = {
     "name": "name",
     "age": "age",
@@ -20,15 +22,23 @@ FIELD_MAP: dict[str, str] = {
     "school": "school",
     "workYears": "work_years",
     "workYearsText": "work_years",
+    "work_years": "work_years",
     "currentTitle": "current_title",
+    "current_title": "current_title",
     "currentCompany": "current_company",
+    "current_company": "current_company",
     "expectTitle": "expect_title",
+    "expect_title": "expect_title",
     "expectCity": "expect_city",
+    "expect_city": "expect_city",
     "expectSalary": "expect_salary",
+    "expect_salary": "expect_salary",
     "skills": "skills",
     "experiences": "experiences",
     "jobId": "applied_job_id",
+    "applied_job_id": "applied_job_id",
     "appliedAt": "applied_at",
+    "applied_at": "applied_at",
 }
 
 _YEAR_RE = re.compile(r"(\d+(?:\.\d+)?)")

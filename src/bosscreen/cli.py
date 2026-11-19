@@ -5,8 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.parse
 from pathlib import Path
 
+from . import transport
+from .collector import BudgetExceeded, Collector, RiskDetected, Usage
 from .config import load_config, load_selectors, check_selectors
 from .models import Candidate
 from .parsing import dedupe, from_platform
@@ -14,7 +17,6 @@ from .requirement import load_requirement
 from .scoring import rank
 from .store import Store
 from .web import serve
-from . import transport
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -141,13 +143,81 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _uid_from_url(url: str) -> str:
+    tail = urllib.parse.urlparse(url).path.rstrip("/").rsplit("/", 1)[-1]
+    return urllib.parse.unquote(tail).removesuffix(".html") or url
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
-    print(
-        "采集层尚未实现。\n"
-        "原因：开发环境没有企业招聘者账号，招聘端页面不可达，选择器无法校准。\n"
-        "按 docs/state.md 的约定，没有账号时不要写采集层——先做看板与草稿。"
+    sel_path = Path(args.selectors) if args.selectors else ROOT / "config" / "selectors.boss.json"
+    if not sel_path.exists():
+        print(f"缺少选择器配置 {sel_path}；从 config/selectors.boss.example.json 复制一份。")
+        return 1
+    sel = load_selectors(sel_path)
+    problems = check_selectors(sel)
+    if problems:
+        for p in problems:
+            print(f"配置问题：{p}")
+        return 1
+    if not sel.get("calibrated") and not args.force:
+        print(
+            "选择器未校准（calibrated=false），拒绝采集。\n"
+            "先用 tests/fixtures/ 里的样例跑一遍：\n"
+            "  bosscreen collect --fixture\n"
+            "真机上确认过每个选择器之后，把 calibrated 改成 true（或用 --force）。"
+        )
+        return 1
+
+    port = args.port or transport.find_port(tuple(args.ports) if args.ports else transport.DEFAULT_PORTS)
+    if port is None:
+        print("没找到开着调试端口的 Chrome。先自己启动一个：\n"
+              "  chrome.exe --remote-debugging-port=9222")
+        return 1
+
+    cfg = load_config()
+    if args.fixture:
+        list_url = (ROOT / "tests" / "fixtures" / "list.html").as_uri()
+        delay = (0.0, 0.0)
+    else:
+        list_url = args.list_url or sel.get("conversation_list", {}).get("url")
+        if not list_url:
+            print("没有列表页 URL：用 --list-url 指定，或在选择器配置里写 conversation_list.url")
+            return 1
+        delay = (cfg.throttle_min_seconds, cfg.throttle_max_seconds)
+
+    usage = Usage(Path(args.usage) if args.usage else ROOT / "data" / "usage.json")
+    col = Collector(
+        port=port,
+        list_spec=sel["conversation_list"],
+        detail_spec=sel["resume_detail"],
+        risk_markers=sel.get("risk_markers", {}),
+        usage=usage,
+        daily_limit=args.daily_limit or cfg.daily_page_limit,
+        delay=delay,
     )
-    return 2
+
+    try:
+        rows = col.list_page(list_url)
+        urls = [urllib.parse.urljoin(list_url, r["href"]) for r in rows if r.get("href")]
+        print(f"列表页 {len(rows)} 条，其中 {len(urls)} 条有详情链接")
+        details = col.collect(urls, limit=args.limit)
+    except (RiskDetected, BudgetExceeded) as exc:
+        print(f"中止：{exc}")
+        for line in col.log:
+            print(f"  · {line}")
+        return 2
+
+    cands = dedupe([from_platform(_uid_from_url(d.get("_href", "")), d) for d in details])
+    req = load_requirement(args.requirement)
+    results = rank(cands, req)
+    _print_board(results, req)
+
+    store = Store(args.db or cfg.db_path)
+    store.upsert_candidates(cands)
+    store.save_scores(req.name, results)
+    store.close()
+    print(f"已写入 {args.db or cfg.db_path}（{len(cands)} 人）；今天已读 {usage.pages} 页")
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
@@ -189,7 +259,18 @@ def main(argv: list[str] | None = None) -> int:
     p_doc.add_argument("--selectors", default=None, help="选择器配置路径")
     p_doc.set_defaults(func=cmd_doctor)
 
-    p_col = sub.add_parser("collect", help="（未实现）从浏览器读取投递列表")
+    p_col = sub.add_parser("collect", help="从浏览器读取投递列表（只读，不发送）")
+    p_col.add_argument("--fixture", action="store_true", help="用 tests/fixtures 的样例页面验证链路")
+    p_col.add_argument("--selectors", default=None, help="选择器配置路径")
+    p_col.add_argument("--list-url", default=None, help="投递列表页 URL")
+    p_col.add_argument("--port", type=int, default=None, help="Chrome 调试端口（默认自动找）")
+    p_col.add_argument("--ports", type=int, nargs="*", default=None)
+    p_col.add_argument("--limit", type=int, default=10, help="最多读几个人的在线简历")
+    p_col.add_argument("--daily-limit", type=int, default=None, help="当天页面预算")
+    p_col.add_argument("--usage", default=None, help="当日用量文件路径")
+    p_col.add_argument("--force", action="store_true", help="允许用未校准的选择器")
+    p_col.add_argument("--db", default=None)
+    p_col.add_argument("--requirement", default=str(ROOT / "data" / "mock" / "requirement.json"))
     p_col.set_defaults(func=cmd_collect)
 
     p_serve = sub.add_parser("serve", help="启动本地看板（只读）")

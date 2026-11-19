@@ -165,7 +165,13 @@ class CDPSession:
             },
         )
         if "exceptionDetails" in res:
-            raise CDPError(f"JS 异常：{res['exceptionDetails'].get('text')}")
+            det = res["exceptionDetails"]
+            detail = (
+                det.get("exception", {}).get("description")
+                or det.get("exception", {}).get("value")
+                or det.get("text")
+            )
+            raise CDPError(f"JS 异常：{detail}")
         return res.get("result", {}).get("value")
 
     def close(self) -> None:

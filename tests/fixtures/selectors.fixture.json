@@ -1,0 +1,41 @@
+{
+  "_readme": [
+    "这份配置只对应 tests/fixtures/ 里的样例页面，用来验证『CDP → 选择器 → 结构化』这条链路。",
+    "它不是真实 BOSS 页面的选择器；真实选择器见 config/selectors.boss.example.json。",
+    "结构（container / item / fields / list_fields / risk_markers）与真实配置完全一致。"
+  ],
+  "version": 2,
+  "calibrated": true,
+  "conversation_list": {
+    "container": ".bosschat-conversation-wrap",
+    "item": ".bosschat-conversation-item",
+    "fields": {
+      "name": ".geek-name",
+      "job": ".bosschat-geek-job",
+      "last_message": ".chat-message-text",
+      "href": "a"
+    }
+  },
+  "resume_detail": {
+    "container": ".resume-content",
+    "fields": {
+      "name": ".geek-name",
+      "degree": ".degree",
+      "work_years": ".work-years",
+      "expect_salary": ".expect-salary",
+      "current_title": ".position-name",
+      "current_company": ".company-name"
+    },
+    "list_fields": {
+      "expect_city": ".expect-city",
+      "skills": ".skill-tag"
+    }
+  },
+  "risk_markers": {
+    "captcha": [".geetest_panel", "[class*=captcha]"],
+    "login_wall": ["/web/user/login", "?ka=header-login"],
+    "blocked_paths": ["/403", "/forbidden"],
+    "blocked_titles": ["账号异常", "账号受限", "访问被拒绝"],
+    "rate_limited": ["操作频繁", "访问频繁", "稍后再试"]
+  }
+}

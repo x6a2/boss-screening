@@ -1,34 +1,51 @@
 {
   "_readme": [
-    "这是招聘端 BOSS 页面的选择器配置。",
-    "开发环境没有企业招聘者账号，因此这里的值【尚未在真机校准】。",
-    "标了 TODO 的键表示推测值，第一次真实运行时必须逐个确认并替换。",
-    "改版时只改这个文件，不要改代码。"
+    "招聘端页面的选择器。改版时只改这个文件，不要改代码。",
+    "开发环境没有企业招聘者账号，标 TODO 的值尚未在真机校准。",
+    "fields 里留空字符串表示『这个字段暂时不取』，不要写猜测值——猜错比留空更糟。",
+    "struct 段的键名与 Candidate 字段对应，改键名等于改数据模型。"
   ],
-  "version": 1,
+  "version": 2,
   "calibrated": false,
+
   "conversation_list": {
-    "_note": "投递/沟通列表（conversationType=牛人发起）",
+    "_note": "投递/沟通列表页：牛人主动发起的那一栏",
+    "url": "https://www.zhipin.com/web/boss/index",
     "container": ".bosschat-conversation-wrap",
     "item": ".bosschat-conversation-item",
-    "name": ".geek-name",
-    "job": ".bosschat-geek-job",
-    "last_message": ".chat-message-text",
-    "unread": ".unread-count",
-    "next_page": "TODO: 滚动容器的触发方式"
+    "fields": {
+      "name": ".geek-name",
+      "job": ".bosschat-geek-job",
+      "last_message": ".chat-message-text",
+      "href": "a"
+    },
+    "paging": {
+      "mode": "scroll",
+      "scroll_container": ".bosschat-conversation-wrap",
+      "max_scrolls": 10
+    }
   },
+
   "resume_detail": {
-    "_note": "在线简历详情面板",
+    "_note": "在线简历详情页（免费可见的那一份）",
     "container": ".resume-content",
-    "name": ".geek-name",
-    "base_info": ".resume-item.item-base",
-    "degree": "TODO: 学历字段选择器",
-    "work_years": "TODO: 工作年限字段选择器",
-    "expect": ".resume-content .expect",
-    "salary": "TODO: 期望薪资选择器",
-    "experience": ".resume-content .resume-item",
-    "skills": "TODO: 技能标签选择器"
+    "fields": {
+      "name": ".geek-name",
+      "degree": "",
+      "work_years": "",
+      "expect_city": "",
+      "expect_salary": "",
+      "skills": "",
+      "current_title": ".resume-item .position-name",
+      "current_company": ".resume-item .company-name"
+    },
+    "list_fields": {
+      "_note": "同一个选择器可能命中多条（技能标签、期望城市），列在这里的按多值取",
+      "skills": "TODO: .skill-tag",
+      "expect_city": "TODO: .expect-city"
+    }
   },
+
   "risk_markers": {
     "_note": "命中任意一项立即停止本轮采集并记录",
     "captcha": [".geetest_panel", "[class*=captcha]", "iframe[src*=captcha]"],
