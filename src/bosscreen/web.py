@@ -12,6 +12,7 @@ from urllib.parse import quote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .draft import build_draft
+from .diff import diff_requirements, diff_results
 from .export import filename_for, to_csv
 from .models import Candidate, Requirement, ScoreResult
 from .requirement import (
@@ -47,6 +48,13 @@ PAGE = """<!doctype html>
                     padding:4px 10px; border-radius:999px; cursor:pointer; font-size:13px; }
   .filters button.on { color:var(--text); border-color:var(--accent); background:#1b2534; }
   select#schemeSel { max-width:220px; }
+  select.dsel { flex:1; }
+  #diffBody h3 { font-size:14px; margin:16px 0 6px; color:var(--dim); font-weight:600; }
+  #diffBody .drow { padding:6px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  #diffBody .drow .up { color:var(--ok); }
+  #diffBody .drow .down { color:var(--bad); }
+  #diffBody .none { color:var(--dim); font-size:14px; padding:6px 0; }
+  #diffBody .why { color:var(--warn); font-size:13px; }
   select { background:var(--panel); color:var(--text); border:1px solid var(--line);
            border-radius:6px; padding:4px 8px; font-size:13px; }
   .chk { color:var(--dim); font-size:13px; display:flex; gap:6px; align-items:center;
@@ -100,6 +108,7 @@ PAGE = """<!doctype html>
   <span class="req" id="req"></span>
   <span class="req" id="stat"></span>
   <select id="schemeSel" title="需求方案" style="margin-left:auto; display:none"></select>
+  <button class="btn ghost" id="diffBtn" style="display:none">对比方案</button>
   <button class="btn ghost" id="exportCsv">导出 CSV</button>
   <button class="btn ghost" id="editReq">编辑需求</button>
 </header>
@@ -137,6 +146,19 @@ PAGE = """<!doctype html>
   <div style="margin-top:18px; display:flex; gap:10px">
     <button class="btn" id="saveReq">保存并重新打分</button>
     <button class="btn ghost" id="cancelReq">取消</button>
+  </div>
+</div>
+<div class="modal" id="diffModal">
+  <div class="reqname">
+    <select id="diffA" class="dsel"></select>
+    <span style="align-self:center;color:var(--dim)">→</span>
+    <select id="diffB" class="dsel"></select>
+  </div>
+  <p class="hint">同一批候选人，按两份需求各算一遍：谁进来了、谁出去了、分数变了多少。只读，不改任何一份方案。</p>
+  <div id="diffBody"></div>
+  <p class="err" id="diffErr"></p>
+  <div style="margin-top:18px; display:flex; gap:10px">
+    <button class="btn ghost" id="closeDiff">关闭</button>
   </div>
 </div>
 <script>
@@ -336,6 +358,7 @@ function renderSchemes() {
   const list = DATA.schemes || [];
   sel.innerHTML = list.map(s => `<option value="${s.id}"${s.name === DATA.req.name ? ' selected' : ''}>${s.name}</option>`).join('');
   sel.style.display = list.length > 1 ? '' : 'none';
+  document.getElementById('diffBtn').style.display = list.length > 1 ? '' : 'none';
   sel.onchange = async () => {
     const data = await postJson('/api/scheme', { id: sel.value });
     if (data.error) { alert(data.error); return; }
@@ -343,8 +366,67 @@ function renderSchemes() {
     renderSchemes();
   };
 }
+function rowLine(r, tone) {
+  const d = r.delta > 0 ? `+${r.delta}` : `${r.delta}`;
+  const why = r.why ? ` · <span class="why">${esc(r.why)}</span>` : '';
+  return `<div class="drow">${esc(r.name)} · ${r.score_a} → ${r.score_b} <span class="${tone}">(${d})</span>${why}</div>`;
+}
+
+function renderDiff(x) {
+  const body = document.getElementById('diffBody');
+  const q = x.requirements, res = x.results;
+  const parts = [];
+  if (q.threshold.changed) parts.push(`<div class="drow">阈值 ${q.threshold.a} → ${q.threshold.b}</div>`);
+  for (const c of q.must.removed) parts.push(`<div class="drow">删掉硬条件：${esc(c.text)}</div>`);
+  for (const c of q.must.added) parts.push(`<div class="drow">新增硬条件：${esc(c.text)}</div>`);
+  for (const c of q.nice.removed) parts.push(`<div class="drow">删掉加分项：${esc(c.text)}</div>`);
+  for (const c of q.nice.added) parts.push(`<div class="drow">新增加分项：${esc(c.text)}</div>`);
+  parts.push(`<div class="drow">达到阈值：${res.counts.a} 人 → ${res.counts.b} 人</div>`);
+  body.innerHTML = `<h3>条件怎么变的</h3>${parts.join('')}` +
+    `<h3>新进来（${res.entered.length}）</h3>` +
+    (res.entered.map(r => rowLine(r, 'up')).join('') || '<div class="none">没有</div>') +
+    `<h3>掉出去（${res.left.length}）</h3>` +
+    (res.left.map(r => rowLine(r, 'down')).join('') || '<div class="none">没有</div>') +
+    `<h3>分数变化（${res.moved.length}）</h3>` +
+    (res.moved.map(r => rowLine(r, r.delta > 0 ? 'up' : 'down')).join('') || '<div class="none">没有</div>');
+}
+
+async function runDiff() {
+  const a = document.getElementById('diffA').value, b = document.getElementById('diffB').value;
+  document.getElementById('diffErr').textContent = '';
+  const data = await postJson('/api/diff', { a, b });
+  if (data.error) { document.getElementById('diffErr').textContent = data.error; return; }
+  renderDiff(data);
+}
+
+function openDiff() {
+  const list = DATA.schemes || [];
+  if (list.length < 2) return;
+  const a = document.getElementById('diffA'), b = document.getElementById('diffB');
+  const opts = list.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  a.innerHTML = opts; b.innerHTML = opts;
+  const cur = list.findIndex(s => s.name === DATA.req.name);
+  // 当前需求可能还没存成方案（比如 mock 的默认需求），这时就从第一份方案开始比；
+  // 两个下拉永远不能指向同一份，否则看起来像"没有差异"。
+  const ai = cur >= 0 ? cur : 0;
+  const bi = (ai + 1) % list.length;
+  a.selectedIndex = ai;
+  b.selectedIndex = bi;
+  a.onchange = runDiff; b.onchange = runDiff;
+  document.getElementById('mask').classList.add('on');
+  document.getElementById('diffModal').classList.add('on');
+  runDiff();
+}
+
+function closeDiff() {
+  document.getElementById('diffModal').classList.remove('on');
+  document.getElementById('mask').classList.remove('on');
+}
+
+document.getElementById('diffBtn').onclick = openDiff;
+document.getElementById('closeDiff').onclick = closeDiff;
 document.getElementById('cancelReq').onclick = closeEditor;
-document.getElementById('mask').onclick = closeEditor;
+document.getElementById('mask').onclick = () => { closeEditor(); closeDiff(); };
 document.getElementById('saveReq').onclick = saveReq;
 document.getElementById('addMust').onclick = () => condRow(document.getElementById('mustList'), null, false);
 document.getElementById('addNice').onclick = () => condRow(document.getElementById('niceList'), null, true);
@@ -406,6 +488,24 @@ class Board:
         self.by_uid = {r.uid: r for r in results}
         self.save_error = None
         return self.payload()
+
+    def diff_schemes(self, a_id: str, b_id: str) -> dict:
+        """两份方案的条件差异 + 名单差异。只读，不改当前需求、不写库。"""
+        if self.load_scheme is None:
+            raise KeyError("当前没有可对比的方案")
+        loaded = []
+        for sid in (a_id, b_id):
+            got = self.load_scheme(sid)
+            if not got:
+                raise KeyError(f"找不到方案：{sid}")
+            loaded.append(got)
+        (req_a, spec_a), (req_b, spec_b) = loaded
+        return {
+            "a": {"id": a_id, "name": req_a.name, "spec": spec_a},
+            "b": {"id": b_id, "name": req_b.name, "spec": spec_b},
+            "requirements": diff_requirements(req_a, req_b),
+            "results": diff_results(self._cand_list, req_a, req_b),
+        }
 
     def export_csv(self) -> str:
         return to_csv(self.results, self.cands)
@@ -480,6 +580,9 @@ def make_handler(board: Board):
             if self.path == "/api/scheme":
                 self._post_scheme()
                 return
+            if self.path == "/api/diff":
+                self._post_diff()
+                return
             if self.path != "/api/draft":
                 self._send(404, b'{"error":"not found"}', "application/json")
                 return
@@ -507,6 +610,22 @@ def make_handler(board: Board):
                 return
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
+
+        def _post_diff(self) -> None:
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                data = json.loads(self.rfile.read(n) or b"{}")
+                payload = board.diff_schemes(str(data["a"]), str(data["b"]))
+            except KeyError as exc:
+                self._send(404, json.dumps({"error": exc.args[0]}, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8")
+                return
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8")
+                return
+            self._send(200, json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
 
         def _post_scheme(self) -> None:
             try:

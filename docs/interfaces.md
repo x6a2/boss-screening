@@ -115,6 +115,7 @@ requirements(id PK, name, definition JSON, created_at)
 | POST | `/api/draft` | `{uid}` → `{text}`，招呼语草稿（只出文本） |
 | POST | `/api/requirement` | `spec` → 校验、重算、落库，返回新的 board payload |
 | POST | `/api/scheme` | `{id}` → 读库里的另一份方案、重算，返回新的 board payload（找不到 404） |
+| POST | `/api/diff` | `{a, b}` → 两份方案的条件差异与名单差异（只读，不落库）；找不到方案 404 |
 | GET | `/api/export.csv` | 当前名单的 CSV（`text/csv; charset=utf-8`，带 BOM，文件名同 `export.filename_for`） |
 
 `/api/board` 的形状：

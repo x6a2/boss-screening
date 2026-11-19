@@ -12,6 +12,7 @@ from pathlib import Path
 from . import transport
 from .collector import BudgetExceeded, Collector, RiskDetected, Usage
 from .config import load_config, load_selectors, check_selectors
+from .diff import summarize as diff_summary
 from .export import filename_for, to_csv
 from .models import Candidate
 from .parsing import dedupe, from_platform
@@ -308,6 +309,27 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_diff(args: argparse.Namespace) -> int:
+    """两份需求方案的差异：谁进来了、谁出去了。只读。"""
+    store = Store(Path(args.db))
+    try:
+        reqs = {}
+        for sid in (args.a, args.b):
+            raw = store.load_requirement(sid)
+            if raw is None:
+                print(f"找不到方案：{sid}（先在看板里保存一份需求）")
+                return 1
+            reqs[sid] = requirement_from_dict(raw)
+        cands = load_store_candidates(args.db)
+        if not cands:
+            print("库里没有候选人，先跑 bosscreen collect 或 bosscreen demo")
+            return 1
+        print(diff_summary(cands, reqs[args.a], reqs[args.b]))
+        return 0
+    finally:
+        store.close()
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     """把当前名单导成 CSV，给要交表/要发群里的人。"""
     if args.mock:
@@ -436,6 +458,12 @@ def main(argv: list[str] | None = None) -> int:
     p_check.add_argument("--daily-limit", type=int, default=None, help="当天页面预算")
     p_check.add_argument("--usage", default=None, help="当日用量文件路径")
     p_check.set_defaults(func=cmd_check)
+
+    p_diff = sub.add_parser("diff", help="对比两份需求方案的名单差异（只读）")
+    p_diff.add_argument("--a", required=True, help="基准方案名")
+    p_diff.add_argument("--b", required=True, help="对照方案名")
+    p_diff.add_argument("--db", default="data/bosscreen.db")
+    p_diff.set_defaults(func=cmd_diff)
 
     p_exp = sub.add_parser("export", help="把名单导出成 CSV")
     p_exp.add_argument("--mock", action="store_true", help="用内置示例数据")

@@ -64,11 +64,16 @@ python -m bosscreen.cli export --mock     # 把名单导成 CSV（UTF-8 BOM，Ex
 
 1. 简历字段解析更细（项目经历、教育经历、求职状态）
 2. 草稿的可选 LLM 改写（现在纯模板）
-3. 看板里对比两个方案的差异（现在只能切来切去）
 4. 发布到 GitHub（需要远端地址与推送凭据）
 
 **有账号后的第一天**：开 9222 的 Chrome 登录招聘端 → `bosscreen check --kind list --page <投递列表 URL>` 改到全 ✓ →
 `bosscreen check --kind detail --page <某个在线简历 URL>` 改到全 ✓ → 置 `calibrated=true` → `collect --limit 2`。
+
+## 下一轮候选
+
+- 附件简历解析（候选人在聊天里发了 PDF，本地抽文本再打分）
+- 草稿的可选 LLM 改写（现在纯模板）
+- 发布到 GitHub（需要远端地址与推送凭据）
 
 ## 有账号之后
 

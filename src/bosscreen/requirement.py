@@ -10,12 +10,11 @@ from .models import Condition, Requirement, Weighted
 
 
 def condition_from_dict(d: dict[str, Any]) -> Condition:
-    return Condition(
-        field=d["field"],
-        op=d["op"],
-        value=d.get("value"),
-        label=d.get("label", ""),
-    )
+    field, op, value = d["field"], d["op"], d.get("value")
+    # 手写 JSON 的需求常常只有 field/op/value，没有给人看的 label。
+    # 这里补上，否则看板与 CSV 里会出现 "work_years gte 3" 这种机器话。
+    label = str(d.get("label") or "").strip() or _auto_label(field, op, value)
+    return Condition(field=field, op=op, value=value, label=label)
 
 
 def requirement_from_dict(d: dict[str, Any]) -> Requirement:
