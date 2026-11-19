@@ -7,7 +7,6 @@
   ],
   "version": 2,
   "calibrated": false,
-
   "conversation_list": {
     "_note": "投递/沟通列表页：牛人主动发起的那一栏",
     "url": "https://www.zhipin.com/web/boss/index",
@@ -27,7 +26,6 @@
       "stall_limit": 3
     }
   },
-
   "resume_detail": {
     "_note": "在线简历详情页（免费可见的那一份）",
     "container": ".resume-content",
@@ -35,25 +33,46 @@
       "name": ".geek-name",
       "degree": "",
       "work_years": "",
-      "expect_city": "",
       "expect_salary": "",
-      "skills": "",
       "current_title": ".resume-item .position-name",
-      "current_company": ".resume-item .company-name"
+      "current_company": ".resume-item .company-name",
+      "job_status": ""
     },
     "list_fields": {
       "_note": "同一个选择器可能命中多条（技能标签、期望城市），列在这里的按多值取",
       "skills": "TODO: .skill-tag",
-      "expect_city": "TODO: .expect-city"
+      "expect_city": "TODO: .expect-city",
+      "educations": "",
+      "projects": ""
     }
   },
-
   "risk_markers": {
     "_note": "命中任意一项立即停止本轮采集并记录",
-    "captcha": [".geetest_panel", "[class*=captcha]", "iframe[src*=captcha]"],
-    "login_wall": ["/web/user/login", "?ka=header-login"],
-    "blocked_paths": ["/403", "/forbidden", "access-denied"],
-    "blocked_titles": ["账号异常", "账号受限", "访问被拒绝"],
-    "rate_limited": ["操作频繁", "访问频繁", "请求频繁", "稍后再试", "频率限制"]
+    "captcha": [
+      ".geetest_panel",
+      "[class*=captcha]",
+      "iframe[src*=captcha]"
+    ],
+    "login_wall": [
+      "/web/user/login",
+      "?ka=header-login"
+    ],
+    "blocked_paths": [
+      "/403",
+      "/forbidden",
+      "access-denied"
+    ],
+    "blocked_titles": [
+      "账号异常",
+      "账号受限",
+      "访问被拒绝"
+    ],
+    "rate_limited": [
+      "操作频繁",
+      "访问频繁",
+      "请求频繁",
+      "稍后再试",
+      "频率限制"
+    ]
   }
 }

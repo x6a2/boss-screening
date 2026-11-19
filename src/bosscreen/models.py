@@ -29,6 +29,9 @@ class Candidate:
     expect_salary: str | None = None
     skills: list[str] = field(default_factory=list)
     experiences: list[dict[str, Any]] = field(default_factory=list)
+    job_status: str | None = None
+    educations: list[str] = field(default_factory=list)
+    projects: list[str] = field(default_factory=list)
     applied_job_id: str | None = None
     applied_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)

@@ -188,6 +188,9 @@ function open(uid) {
       <dt>学历</dt><dd>${esc(c.degree || '未知')}</dd>
       <dt>期望</dt><dd>${esc((c.expect_city||[]).join('、') || '未知')} · ${esc(c.expect_salary || '未知')}</dd>
       <dt>技能</dt><dd>${esc((c.skills||[]).join('、') || '未知')}</dd>
+      <dt>求职</dt><dd>${esc(c.job_status || '未知')}</dd>
+      <dt>教育</dt><dd>${esc((c.educations||[]).join('；') || '未知')}</dd>
+      <dt>项目</dt><dd>${esc((c.projects||[]).join('；') || '未知')}</dd>
       <dt>命中</dt><dd>${esc(CUR.hits.join('；') || '无')}</dd>
       <dt>待确认</dt><dd>${esc(CUR.pending.join('；') || '无')}</dd>
       <dt>不满足</dt><dd>${esc(CUR.misses.join('；') || '无')}</dd>

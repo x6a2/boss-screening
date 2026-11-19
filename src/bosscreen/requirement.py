@@ -60,6 +60,9 @@ FIELD_CHOICES: list[tuple[str, str]] = [
     ("age", "年龄"),
     ("school", "学校"),
     ("gender", "性别"),
+    ("job_status", "求职状态"),
+    ("projects", "项目经历"),
+    ("educations", "教育经历"),
 ]
 
 OP_CHOICES: list[tuple[str, str]] = [
@@ -102,6 +105,9 @@ FIELD_LABELS = {
     "age": "年龄",
     "school": "学校",
     "gender": "性别",
+    "job_status": "求职状态",
+    "projects": "项目经历",
+    "educations": "教育经历",
 }
 
 _OP_PHRASES = {
@@ -149,6 +155,8 @@ def _auto_label(field: str, op: str, value) -> str:
         return f"年龄不低于 {text} 岁"
     if field == "expect_salary" and op == "lte":
         return f"期望薪资不高于 {text}"
+    if field == "job_status" and op in ("eq", "contains_any", "in"):
+        return f"求职状态 {text}"
     if op == "exists":
         return f"{FIELD_LABELS.get(field, field)}有填写"
     return f"{FIELD_LABELS.get(field, field)} {_OP_PHRASES.get(op, op)} {text}"

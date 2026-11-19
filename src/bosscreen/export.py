@@ -20,6 +20,9 @@ HEADER = [
     "期望薪资",
     "当前职位",
     "当前公司",
+    "求职状态",
+    "教育经历",
+    "项目经历",
     "技能",
     "理由",
     "uid",
@@ -39,6 +42,8 @@ def rows(results: Iterable[ScoreResult], cands: dict) -> list[list[str]]:
     for r in results:
         c = cands.get(r.uid)
         skills = "、".join(c.skills or []) if c and c.skills else ""
+        educations = "｜".join(c.educations or []) if c and c.educations else ""
+        projects = "｜".join(c.projects or []) if c and c.projects else ""
         out.append(
             [
                 r.name or "",
@@ -51,6 +56,9 @@ def rows(results: Iterable[ScoreResult], cands: dict) -> list[list[str]]:
                 (c.expect_salary or "") if c else "",
                 (c.current_title or "") if c else "",
                 (c.current_company or "") if c else "",
+                (c.job_status or "") if c else "",
+                educations,
+                projects,
                 skills,
                 r.reason or "",
                 r.uid,

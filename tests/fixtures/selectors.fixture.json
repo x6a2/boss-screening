@@ -30,11 +30,14 @@
       "work_years": ".work-years",
       "expect_salary": ".expect-salary",
       "current_title": ".position-name",
-      "current_company": ".company-name"
+      "current_company": ".company-name",
+      "job_status": ".job-status"
     },
     "list_fields": {
       "expect_city": ".expect-city",
-      "skills": ".skill-tag"
+      "skills": ".skill-tag",
+      "educations": ".edu-line",
+      "projects": ".project-line"
     }
   },
   "risk_markers": {

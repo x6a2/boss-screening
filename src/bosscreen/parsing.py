@@ -34,6 +34,12 @@ FIELD_MAP: dict[str, str] = {
     "expectSalary": "expect_salary",
     "expect_salary": "expect_salary",
     "skills": "skills",
+    "jobStatus": "job_status",
+    "job_status": "job_status",
+    "educations": "educations",
+    "education": "educations",
+    "projects": "projects",
+    "projectList": "projects",
     "experiences": "experiences",
     "jobId": "applied_job_id",
     "applied_job_id": "applied_job_id",
@@ -70,6 +76,30 @@ def _as_list(value: Any) -> list[str]:
     return [str(value)]
 
 
+def _as_lines(value: Any) -> list[str]:
+    """多行文本/列表 → 若干条原文。
+
+    和 _as_list 的区别：这里不按空格切。"2015-2019 深圳大学 计算机 本科"
+    是一个整体，按空格切开就没法读了。
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out: list[str] = []
+        for v in value:
+            if isinstance(v, dict):
+                text = " ".join(str(x).strip() for x in v.values() if str(x).strip())
+            else:
+                text = str(v).strip()
+            if text:
+                out.append(text)
+        return out
+    text = str(value).strip()
+    if not text:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
 def _as_int(value: Any) -> int | None:
     if value is None:
         return None
@@ -104,6 +134,9 @@ def from_platform(uid: str, raw: dict[str, Any]) -> Candidate:
         expect_salary=(str(data["expect_salary"]).strip() if data.get("expect_salary") else None),
         skills=_as_list(data.get("skills")),
         experiences=data.get("experiences") or [],
+        job_status=(str(data["job_status"]).strip() if data.get("job_status") else None),
+        educations=_as_lines(data.get("educations")),
+        projects=_as_lines(data.get("projects")),
         applied_job_id=(str(data["applied_job_id"]) if data.get("applied_job_id") else None),
         applied_at=(str(data["applied_at"]) if data.get("applied_at") else None),
         raw=raw,
