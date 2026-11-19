@@ -15,3 +15,8 @@ config.local.toml
 
 .DS_Store
 Thumbs.db
+
+# 构建产物
+*.egg-info/
+build/
+dist/
