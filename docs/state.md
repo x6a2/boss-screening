@@ -36,7 +36,8 @@ python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 
 - [x] **看板内编辑需求**：硬条件 / 加分项 / 权重 / 阈值都能改，保存即重算并落库，存不上会在弹窗里说明
 - [x] **列表滚动翻页**：滚到底自动加载（`paging.mode=scroll`），按 href 去重，连续 3 次没有新卡片才认定到底
 - [x] 修掉"新标签页还没加载完就去读"的竞态（新页一开始是 about:blank 且已 complete，会误判为加载完成）
-- [x] 单测 50 条（含 3 条需要 Chrome 的端到端测试，默认跳过；滚到 9 条 / 短列表不空转 / 详情页紧接打开能读到）
+- [x] **选择器体检 `bosscreen check`**：容器在不在、几条、每个字段命中几个、样本是什么；容器没命中直接退出 3，字段没命中退出 1，全命中才提示可以置 `calibrated=true`
+- [x] 单测 55 条（含 6 条需要 Chrome 的端到端测试，默认跳过：滚动到底 / 短列表不空转 / 详情页紧接打开能读到 / 体检命中数与样本 / 容器错要报告不抛错）
 
 ## 未完成
 
@@ -59,6 +60,9 @@ python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 
 2. 看板导出名单（CSV）
 3. 草稿的可选 LLM 改写（现在纯模板）
 4. 多份需求方案并存（现在只有一份当前需求）
+
+**有账号后的第一天**：开 9222 的 Chrome 登录招聘端 → `bosscreen check --kind list --page <投递列表 URL>` 改到全 ✓ →
+`bosscreen check --kind detail --page <某个在线简历 URL>` 改到全 ✓ → 置 `calibrated=true` → `collect --limit 2`。
 
 ## 有账号之后
 

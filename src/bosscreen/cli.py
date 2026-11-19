@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import unicodedata
 import urllib.parse
 from pathlib import Path
 
@@ -222,6 +223,90 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pad(text: str, width: int) -> str:
+    """按显示宽度补空格（中文算 2 格），别让表格在中文列上错位。"""
+    shown = sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in str(text))
+    return str(text) + " " * max(0, width - shown)
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """选择器体检：把每个选择器在真实页面上试一遍，告诉你哪一项没命中。"""
+    sel_path = Path(args.selectors) if args.selectors else ROOT / "config" / "selectors.boss.json"
+    if not sel_path.exists():
+        print(f"缺少选择器配置 {sel_path}；从 config/selectors.boss.example.json 复制一份。")
+        return 1
+    sel = load_selectors(sel_path)
+    problems = check_selectors(sel)
+    if problems:
+        for p in problems:
+            print(f"配置问题：{p}")
+        return 1
+
+    port = args.port or transport.find_port(tuple(args.ports) if args.ports else transport.DEFAULT_PORTS)
+    if port is None:
+        print("没找到开着调试端口的 Chrome。先自己启动一个：\n"
+              "  chrome.exe --remote-debugging-port=9222")
+        return 1
+
+    kind = args.kind
+    if kind == "list":
+        url = args.page or args.list_url or sel["conversation_list"].get("url")
+    else:
+        url = args.page
+    if not url:
+        print("要检查哪个页面？用 --page 指定（列表页也可以 --list-url）")
+        return 1
+
+    cfg = load_config()
+    usage = Usage(Path(args.usage) if args.usage else ROOT / "data" / "usage.json")
+    col = Collector(
+        port=port,
+        list_spec=sel["conversation_list"],
+        detail_spec=sel["resume_detail"],
+        risk_markers=sel.get("risk_markers", {}),
+        usage=usage,
+        daily_limit=args.daily_limit or cfg.daily_page_limit,
+        delay=(0.0, 0.0),
+    )
+    print(f"体检页面（{kind}）：{url}")
+    try:
+        info = col.probe_page(url, kind=kind)
+    except (RiskDetected, BudgetExceeded) as exc:
+        print(f"中止：{exc}")
+        return 2
+
+    if not info.get("container"):
+        spec = sel["conversation_list"] if kind == "list" else sel["resume_detail"]
+        print(f"容器没命中：{spec.get('container')}")
+        print("先去页面上确认容器类名——容器错了，后面所有字段都不用看。")
+        return 3
+
+    if kind == "list":
+        print(f"容器命中，列表里有 {info.get('items', 0)} 条")
+        if not info.get("items"):
+            print("一条都没抽到：item 选择器大概率不对。")
+            return 3
+
+    bad = 0
+    print(_pad("字段", 20) + _pad("命中", 10) + "样本")
+    print("-" * 76)
+    for key, meta in (info.get("fields") or {}).items():
+        if meta.get("skipped"):
+            print(_pad(key, 20) + _pad("留空", 10) + "-")
+            continue
+        hits = meta.get("hits")
+        mark = "✓" if hits else "✗"
+        if not hits:
+            bad += 1
+        sample = (meta.get("sample") or "").replace("\n", " ")[:40]
+        print(_pad(key, 20) + _pad(f"{mark} {hits}", 10) + sample)
+    if bad:
+        print(f"\n有 {bad} 个字段没命中。改选择器，别硬跑——空字段会被当作『未知』，不是『不合适』，但名单会缺信息。")
+        return 1
+    print("\n全部命中。可以在 config 里把 calibrated 改成 true 了。")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     cands = dedupe(_load_mock()) if args.mock else load_store_candidates(args.db)
     if not cands:
@@ -296,6 +381,17 @@ def main(argv: list[str] | None = None) -> int:
     p_col.add_argument("--db", default=None)
     p_col.add_argument("--requirement", default=str(ROOT / "data" / "mock" / "requirement.json"))
     p_col.set_defaults(func=cmd_collect)
+
+    p_check = sub.add_parser("check", help="选择器体检：逐项报告命中情况（只读）")
+    p_check.add_argument("--page", default=None, help="要检查的页面 URL")
+    p_check.add_argument("--list-url", default=None, help="列表页 URL（等价于 --page，kind=list 时）")
+    p_check.add_argument("--kind", choices=["list", "detail"], default="list", help="检查列表页还是详情页")
+    p_check.add_argument("--selectors", default=None, help="选择器配置路径")
+    p_check.add_argument("--port", type=int, default=None, help="Chrome 调试端口（默认自动找）")
+    p_check.add_argument("--ports", type=int, nargs="*", default=None)
+    p_check.add_argument("--daily-limit", type=int, default=None, help="当天页面预算")
+    p_check.add_argument("--usage", default=None, help="当日用量文件路径")
+    p_check.set_defaults(func=cmd_check)
 
     p_serve = sub.add_parser("serve", help="启动本地看板（只读）")
     p_serve.add_argument("--mock", action="store_true", help="用内置示例数据")

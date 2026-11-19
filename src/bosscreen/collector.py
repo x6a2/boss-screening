@@ -75,6 +75,50 @@ def scroll_js(spec: dict[str, Any]) -> str:
 }})()"""
 
 
+def probe_list_js(spec: dict[str, Any]) -> str:
+    """列表页体检：容器在不在、有几条、每个字段能命中几个、拿到什么样本。"""
+    return f"""(() => {{
+  const SPEC = {json.dumps(spec, ensure_ascii=False)};
+  const clean = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const box = SPEC.container ? document.querySelector(SPEC.container) : null;
+  if (SPEC.container && !box) return JSON.stringify({{container: false, items: 0, fields: {{}}}});
+  const wrap = box || document;
+  const items = Array.from(wrap.querySelectorAll(SPEC.item || ':scope > *'));
+  const first = items[0] || null;
+  const fields = {{}};
+  for (const [key, sel] of Object.entries(SPEC.fields || {{}})) {{
+    if (!sel) {{ fields[key] = {{hits: null, sample: null, skipped: true}}; continue; }}
+    const all = first ? Array.from(first.querySelectorAll(sel)) : [];
+    fields[key] = {{hits: all.length, sample: all.length ? (key === 'href' ? (all[0].href || all[0].getAttribute('href')) : clean(all[0].textContent)) : null}};
+  }}
+  return JSON.stringify({{container: true, items: items.length, fields: fields}});
+}})()"""
+
+
+def probe_detail_js(spec: dict[str, Any]) -> str:
+    """详情页体检：容器、单值字段、多值字段各能命中几个。"""
+    return f"""(() => {{
+  const SPEC = {json.dumps(spec, ensure_ascii=False)};
+  const clean = s => (s || '').replace(/\\s+/g, ' ').trim();
+  const box = SPEC.container ? document.querySelector(SPEC.container) : null;
+  if (SPEC.container && !box) return JSON.stringify({{container: false, items: 0, fields: {{}}}});
+  const root = box || document;
+  const fields = {{}};
+  for (const [key, sel] of Object.entries(SPEC.fields || {{}})) {{
+    if (!sel) {{ fields[key] = {{hits: null, sample: null, skipped: true}}; continue; }}
+    const all = Array.from(root.querySelectorAll(sel));
+    fields[key] = {{hits: all.length, sample: all.length ? clean(all[0].textContent) : null}};
+  }}
+  for (const [key, sel] of Object.entries(SPEC.list_fields || {{}})) {{
+    if (key.startsWith('_')) continue;
+    if (!sel) {{ fields[key] = {{hits: null, sample: null, skipped: true}}; continue; }}
+    const all = Array.from(root.querySelectorAll(sel));
+    fields[key] = {{hits: all.length, sample: all.slice(0, 3).map(e => clean(e.textContent)).join(' / ') || null}};
+  }}
+  return JSON.stringify({{container: true, items: 1, fields: fields}});
+}})()"""
+
+
 def merge_rows(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """按 href（没有就按 姓名+岗位）合并；滚动会把同一批卡片重新抽一遍，必须去重。"""
     seen: set[str] = set()
@@ -276,6 +320,20 @@ class Collector:
         finally:
             self._close(tab, sess)
         return rows
+
+    def probe_page(self, url: str, kind: str = "list") -> dict[str, Any]:
+        """选择器体检：只读、只开一个页面，报告每个选择器命中几个。用来在校准前逐项核对。"""
+        if kind not in ("list", "detail"):
+            raise ValueError("kind 只能是 list 或 detail")
+        spec = self.list_spec if kind == "list" else self.detail_spec
+        js = probe_list_js(spec) if kind == "list" else probe_detail_js(spec)
+        tab, sess = self._open(url)
+        try:
+            info = json.loads(sess.eval(js))
+        finally:
+            self._close(tab, sess)
+        self.log.append(f"体检 {kind}：容器{'命中' if info.get('container') else '没找到'}，{info.get('items', 0)} 条")
+        return info
 
     def detail_page(self, url: str) -> dict[str, Any]:
         self._sleep()

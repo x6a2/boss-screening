@@ -59,6 +59,7 @@
 | A11 | 需求存不上时如实告诉用户 | 单测：`on_save` 抛错 → `payload.saved.ok=false`，弹窗里显示原因 |
 | A12 | 列表滚动能把隐藏的候选人滚出来 | `collect --list-url …/list-scroll.html` 输出 9 条并写明"认为到底" |
 | A13 | 新标签页没加载完时不能读到空白页 | 单测：紧接着 `detail_page` 打开详情页仍能读到姓名/学历 |
+| A14 | 选择器逐个自检，错了要说清哪一项 | `check --kind list/detail --page …` 打出每字段命中数与样本；容器错退出 3 |
 
 ## 6. 非目标
 

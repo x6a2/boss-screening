@@ -6,6 +6,17 @@
 
 > 定位：个人老板 / 小团队的本地筛选器。不接 ATS，不上传数据，不代发消息。
 
+## 校准选择器（有招聘号之后）
+
+BOSS 前端改版会换类名，所以选择器全在 `config/selectors.boss.json` 里，代码里没有。改完用体检命令逐项核对：
+
+```bash
+bosscreen check --kind list   --page "<投递列表 URL>"    # 容器有没有命中、几条、每个字段命中几个
+bosscreen check --kind detail --page "<在线简历 URL>"
+```
+
+全 ✓ 之后再把 `calibrated` 改成 `true`，否则 `collect` 会拒绝上真机（猜错的选择器会被当成事实）。
+
 ## 它做什么
 
 ```

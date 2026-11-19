@@ -148,3 +148,15 @@ requirements(id PK, name, definition JSON, created_at)
 
 `_wait_ready(sess, url)` 必须同时满足 `readyState=complete` **且** `location.href` 与目标 URL 对得上。
 少了后半句就会读到新标签页的初始 `about:blank`——它本来就是 complete。
+
+## 选择器体检 `bosscreen check`
+
+只开一个页面、只读，报告每一项能不能命中：
+
+```bash
+bosscreen check --kind list   --page <投递列表 URL>
+bosscreen check --kind detail --page <在线简历 URL>
+```
+
+输出表：字段 / ✓✗ 命中数 / 样本值。退出码：0 全命中，1 有字段没命中，3 容器没命中（容器错时不再逐字段看），2 被风控或预算拦下。
+留空（`""`）的字段显示"留空"，不算失败——它表示"这个字段暂时不取"。
