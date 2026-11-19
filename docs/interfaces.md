@@ -102,3 +102,33 @@ requirements(id PK, name, definition JSON, created_at)
 - `calibrated=false` 的选择器由 cli 拦下，采集器本身不管这个（它只认参数）
 
 原始 dict 的键名 = 选择器配置里 `fields` 的键名（snake_case），由 `parsing.FIELD_MAP` 映射到 `Candidate`。
+
+## 看板的 HTTP 接口
+
+只监听 `127.0.0.1`，无鉴权（本机自用）。全部 JSON 用 UTF-8。
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `/` | 内嵌的看板页面（单个 HTML，无外部资源） |
+| GET | `/api/board` | 当前需求 + 名单 + 筛选用的 facets + 可编辑的 spec/choices |
+| POST | `/api/draft` | `{uid}` → `{text}`，招呼语草稿（只出文本） |
+| POST | `/api/requirement` | `spec` → 校验、重算、落库，返回新的 board payload |
+
+`/api/board` 的形状：
+
+```json
+{
+  "req":    {"name": "...", "threshold": 60.0},
+  "spec":   {"name": "...", "threshold": 60.0, "must": [...], "nice": [...]},
+  "choices":{"fields": [["work_years","工作年限"], ...], "ops": [["gte","大于等于"], ...]},
+  "facets": {"cities": ["深圳"], "degrees": ["硕士","本科"]},
+  "rows":   [{"uid": "...", "total": 85.7, "passed_must": true, "pending": [], "coverage": 1.0, "cand": {...}}],
+  "saved":  {"ok": true, "error": null}
+}
+```
+
+`/api/requirement` 的三条约定：
+
+- 校验失败 → HTTP 400，`{"error": "需求名称不能为空；阈值要在 0-100 之间；..."}`（中文、可直接展示）
+- 校验通过但落库失败 → HTTP 200，`saved.ok=false` + `error`，**分数仍然按新需求重算**（页面不假装成功）
+- 校验通过且落库成功 → `saved.ok=true`，同时把用户的 `--requirement` 文件回写（`mock` 目录下的样例不动）

@@ -12,7 +12,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .draft import build_draft
 from .models import Candidate, Requirement, ScoreResult
-from .scoring import degree_level
+from .requirement import (
+    FIELD_CHOICES,
+    OP_CHOICES,
+    prepare_spec,
+    requirement_from_dict,
+    requirement_to_dict,
+)
+from .scoring import degree_level, rank
 
 PAGE = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -65,12 +72,31 @@ PAGE = """<!doctype html>
              border:1px solid var(--line); border-radius:6px; padding:12px; font:13px/1.7 inherit;
              resize:vertical; }
   .hint { color:var(--dim); font-size:12px; margin-top:8px; }
+  .mask { position:fixed; inset:0; background:#0008; display:none; z-index:10; }
+  .mask.on { display:block; }
+  .modal { position:fixed; top:6vh; left:50%; transform:translateX(-50%); width:min(760px,92vw);
+           max-height:86vh; overflow:auto; background:var(--panel); border:1px solid var(--line);
+           border-radius:10px; padding:22px; z-index:11; display:none; }
+  .modal.on { display:block; }
+  .modal h3 { font-size:14px; margin:18px 0 8px; color:var(--dim); font-weight:500; }
+  .cond { display:grid; grid-template-columns:150px 130px 1fr 74px 30px; gap:8px; margin-bottom:8px;
+          align-items:center; }
+  .cond input[type=text], .cond input[type=number] { width:100%; background:#0c0e12; color:var(--text);
+          border:1px solid var(--line); border-radius:6px; padding:5px 8px; font-size:13px; }
+  .cond .del { background:transparent; border:1px solid var(--line); color:var(--dim);
+          border-radius:6px; cursor:pointer; height:28px; }
+  .reqname { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+  .reqname input { flex:1; background:#0c0e12; color:var(--text); border:1px solid var(--line);
+          border-radius:6px; padding:7px 10px; font-size:14px; }
+  .reqname input[type=number] { flex:0 0 110px; }
+  .err { color:var(--bad); font-size:13px; margin-top:10px; white-space:pre-wrap; }
 </style></head>
 <body>
 <header>
   <h1>简历筛选看板</h1>
   <span class="req" id="req"></span>
   <span class="req" id="stat"></span>
+  <button class="btn ghost" id="editReq" style="margin-left:auto">编辑需求</button>
 </header>
 <div class="filters" id="filters">
   <button data-f="all" class="on">全部</button>
@@ -89,8 +115,27 @@ PAGE = """<!doctype html>
   </table></div>
   <aside class="side" id="side"></aside>
 </div>
+<div class="mask" id="mask"></div>
+<div class="modal" id="modal">
+  <div class="reqname">
+    <input id="reqName" type="text" placeholder="这条需求叫什么，比如：深圳后端工程师">
+    <input id="reqThreshold" type="number" min="0" max="100" step="5" title="达到多少分算推荐">
+  </div>
+  <p class="hint">硬条件：不满足就不推荐；填不满的字段会标"待确认"，不会当成不满足。</p>
+  <h3>硬条件</h3>
+  <div id="mustList"></div>
+  <button class="btn ghost" id="addMust">+ 加一条硬条件</button>
+  <h3>加分项（权重越大越重要）</h3>
+  <div id="niceList"></div>
+  <button class="btn ghost" id="addNice">+ 加一条加分项</button>
+  <p class="err" id="reqErr"></p>
+  <div style="margin-top:18px; display:flex; gap:10px">
+    <button class="btn" id="saveReq">保存并重新打分</button>
+    <button class="btn ghost" id="cancelReq">取消</button>
+  </div>
+</div>
 <script>
-let DATA = {req:null, rows:[], facets:{cities:[],degrees:[]}};
+let DATA = {req:null, spec:null, choices:{fields:[],ops:[]}, rows:[], facets:{cities:[],degrees:[]}};
 let FILTER = 'all', CUR = null, CITY = '', DEG = '', FULL = false, DEGS = [];
 const esc = s => (s ?? '').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const flag = r => !r.passed_must ? ['未过','t-bad'] : (r.pending.length ? ['待确认','t-warn'] : ['通过','t-ok']);
@@ -171,6 +216,101 @@ document.getElementById('city').onchange = e => { CITY = e.target.value; render(
 document.getElementById('deg').onchange = e => { DEG = e.target.value; render(); };
 document.getElementById('fullonly').onchange = e => { FULL = e.target.checked; render(); };
 
+function reqDraft() {
+  const rowOf = (el, nice) => {
+    const [fs, os] = el.querySelectorAll('select');
+    const inp = el.querySelector('input[type=text]');
+    const w = el.querySelector('input[type=number]');
+    const o = {field: fs.value, op: os.value, value: inp.value.trim()};
+    if (nice) o.weight = Number(w.value || 1);
+    return o;
+  };
+  return {
+    name: document.getElementById('reqName').value.trim(),
+    threshold: Number(document.getElementById('reqThreshold').value || 60),
+    must: [...document.querySelectorAll('#mustList .cond')].map(el => rowOf(el, false)),
+    nice: [...document.querySelectorAll('#niceList .cond')].map(el => rowOf(el, true)),
+  };
+}
+
+function condRow(host, item, nice) {
+  const el = document.createElement('div');
+  el.className = 'cond';
+  const fs = document.createElement('select');
+  DATA.choices.fields.forEach(([v, t]) => fs.add(new Option(t, v)));
+  const os = document.createElement('select');
+  DATA.choices.ops.forEach(([v, t]) => os.add(new Option(t, v)));
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.placeholder = '值，多个用、分隔';
+  const w = document.createElement('input');
+  w.type = 'number'; w.min = '0'; w.step = '1'; w.title = '权重';
+  const del = document.createElement('button');
+  del.className = 'del'; del.textContent = '×'; del.title = '删除这条';
+  del.onclick = () => el.remove();
+  if (item) {
+    fs.value = item.field; os.value = item.op;
+    inp.value = Array.isArray(item.value) ? item.value.join('、') : (item.value ?? '');
+    if (nice) w.value = item.weight ?? 1;
+  }
+  fs.onchange = os.onchange = () => {};
+  el.append(fs, os, inp, nice ? w : Object.assign(document.createElement('span'), {textContent: ''}), del);
+  host.appendChild(el);
+}
+
+function openEditor() {
+  document.getElementById('reqName').value = DATA.spec.name;
+  document.getElementById('reqThreshold').value = DATA.req.threshold;
+  const must = document.getElementById('mustList'), nice = document.getElementById('niceList');
+  must.innerHTML = ''; nice.innerHTML = '';
+  DATA.spec.must.forEach(it => condRow(must, it, false));
+  DATA.spec.nice.forEach(it => condRow(nice, it, true));
+  document.getElementById('reqErr').textContent = '';
+  document.getElementById('mask').classList.add('on');
+  document.getElementById('modal').classList.add('on');
+}
+
+function closeEditor() {
+  document.getElementById('mask').classList.remove('on');
+  document.getElementById('modal').classList.remove('on');
+}
+
+async function saveReq() {
+  const err = document.getElementById('reqErr');
+  err.textContent = '';
+  const res = await fetch('/api/requirement', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify(reqDraft())});
+  const data = await res.json();
+  if (!res.ok) { err.textContent = data.error || '保存失败'; return; }
+  DATA = data;
+  if (data.saved && !data.saved.ok) {
+    // 分数已经按新需求重算了，但没写进库——如实说清楚，别让人以为存上了
+    err.textContent = '已按新需求重新打分，但没能存进本地库：' + (data.saved.error || '未知原因');
+    document.getElementById('req').textContent = data.req.name;
+    render();
+    return;
+  }
+  const citySel = document.getElementById('city'), degSel = document.getElementById('deg');
+  const keepCity = citySel.value, keepDeg = degSel.value;
+  citySel.length = 1; degSel.length = 1;
+  DEGS = data.facets.degrees;
+  data.facets.cities.forEach(c => citySel.add(new Option(c, c)));
+  DEGS.forEach(c => degSel.add(new Option(c + '及以上', c)));
+  citySel.value = keepCity; degSel.value = keepDeg;
+  CUR = null;
+  document.getElementById('side').classList.remove('on');
+  document.getElementById('req').textContent = data.req.name;
+  render();
+  closeEditor();
+}
+
+document.getElementById('editReq').onclick = openEditor;
+document.getElementById('cancelReq').onclick = closeEditor;
+document.getElementById('mask').onclick = closeEditor;
+document.getElementById('saveReq').onclick = saveReq;
+document.getElementById('addMust').onclick = () => condRow(document.getElementById('mustList'), null, false);
+document.getElementById('addNice').onclick = () => condRow(document.getElementById('niceList'), null, true);
+
 fetch('/api/board').then(r => r.json()).then(d => {
   DATA = d;
   DEGS = d.facets.degrees;
@@ -192,11 +332,31 @@ class Board:
         results: list[ScoreResult],
         req: Requirement,
         cands: list[Candidate] | None = None,
+        on_save=None,
     ) -> None:
         self.req = req
         self.results = results
         self.by_uid = {r.uid: r for r in results}
         self.cands = {c.uid: c for c in (cands or [])}
+        self._cand_list = list(cands or [])
+        self.on_save = on_save
+        self.save_error: str | None = None
+
+    def apply(self, spec: dict) -> dict:
+        """看板上改了需求：校验 → 重新打分 → 落库 → 返回新的一页数据。"""
+        clean = prepare_spec(spec)
+        req = requirement_from_dict(clean)
+        results = rank(self._cand_list, req)
+        self.req = req
+        self.results = results
+        self.by_uid = {r.uid: r for r in results}
+        self.save_error: str | None = None
+        if self.on_save is not None:
+            try:
+                self.on_save(req, clean)
+            except Exception as exc:  # noqa: BLE001 - 页面照常可用，但要如实说没存上
+                self.save_error = str(exc) or exc.__class__.__name__
+        return self.payload()
 
     def payload(self) -> dict:
         cities: set[str] = set()
@@ -210,6 +370,8 @@ class Board:
                 "name": self.req.name,
                 "threshold": self.req.threshold,
             },
+            "spec": requirement_to_dict(self.req),
+            "choices": {"fields": FIELD_CHOICES, "ops": OP_CHOICES},
             "facets": {
                 "cities": sorted(cities),
                 "degrees": sorted(degrees, key=lambda d: degree_level(d) or 0, reverse=True),
@@ -218,6 +380,7 @@ class Board:
                 {**r.__dict__, "cand": asdict(self.cands[r.uid]) if r.uid in self.cands else {}}
                 for r in self.results
             ],
+            "saved": {"ok": self.save_error is None, "error": self.save_error},
         }
 
     def draft_for(self, uid: str) -> str:
@@ -249,6 +412,9 @@ def make_handler(board: Board):
                 self._send(404, b'{"error":"not found"}', "application/json")
 
         def do_POST(self) -> None:
+            if self.path == "/api/requirement":
+                self._post_requirement()
+                return
             if self.path != "/api/draft":
                 self._send(404, b'{"error":"not found"}', "application/json")
                 return
@@ -262,6 +428,21 @@ def make_handler(board: Board):
             body = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
 
+        def _post_requirement(self) -> None:
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                spec = json.loads(self.rfile.read(n) or b"{}")
+                payload = board.apply(spec)
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)}, ensure_ascii=False).encode(), "application/json")
+                return
+            except json.JSONDecodeError:
+                self._send(400, json.dumps({"error": "请求不是合法 JSON"}, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8")
+                return
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self._send(200, body, "application/json; charset=utf-8")
+
     return Handler
 
 
@@ -271,7 +452,8 @@ def serve(
     cands: list[Candidate] | None = None,
     host: str = "127.0.0.1",
     port: int = 8686,
+    on_save=None,
 ):
-    board = Board(results, req, cands)
+    board = Board(results, req, cands, on_save=on_save)
     httpd = ThreadingHTTPServer((host, port), make_handler(board))
     return httpd

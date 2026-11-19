@@ -56,6 +56,11 @@ python -m bosscreen.cli collect --fixture --selectors tests/fixtures/selectors.f
 看板里点任意一行看完整信息；点"生成招呼语草稿"只把文本算出来给你复制——
 **发不发、发给谁，仍然由你在 BOSS 里手动决定。**
 
+右上角"编辑需求"可以直接改条件：硬条件、加分项、权重、阈值，保存后立刻重新打分。
+不用去翻 JSON——但改完会同时写进本地库和你的需求文件，下次打开还是这份需求。
+
+![编辑需求](docs/img/editor.png)
+
 ## 文档
 
 - [需求与验收](docs/spec.md)

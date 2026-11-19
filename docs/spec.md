@@ -55,6 +55,8 @@
 | A7 | 全链路无对外写操作 | 代码里不存在发送函数 |
 | A8 | 采集管线在样例页面上端到端跑通 | `collect --fixture` + `tests/test_collector_live.py` |
 | A9 | 未校准的选择器不允许上真机 | `collect` 在 `calibrated=false` 时返回 1 |
+| A10 | 需求能在看板上改，改完立刻重算 | 点"编辑需求"保存，名单与标题同时变 |
+| A11 | 需求存不上时如实告诉用户 | 单测：`on_save` 抛错 → `payload.saved.ok=false`，弹窗里显示原因 |
 
 ## 6. 非目标
 

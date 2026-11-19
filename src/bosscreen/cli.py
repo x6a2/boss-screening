@@ -13,7 +13,7 @@ from .collector import BudgetExceeded, Collector, RiskDetected, Usage
 from .config import load_config, load_selectors, check_selectors
 from .models import Candidate
 from .parsing import dedupe, from_platform
-from .requirement import load_requirement
+from .requirement import load_requirement, requirement_to_dict
 from .scoring import rank
 from .store import Store
 from .web import serve
@@ -227,7 +227,29 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return 1
     req = load_requirement(args.requirement)
     results = rank(cands, req)
-    httpd = serve(results, req, cands, host=args.host, port=args.port)
+    db_path = args.db or load_config().db_path
+
+    def _save(req_obj, spec) -> None:
+        """看板上改了需求就落库。失败时抛出去，让页面知道没存上。"""
+        store = Store(db_path)
+        try:
+            store.save_requirement(req_obj.name, req_obj.name, spec)
+            store.save_scores(req_obj.name, rank(cands, req_obj))
+        finally:
+            store.close()
+        # 用户自己的需求文件跟着改；示例数据不动
+        req_file = Path(args.requirement)
+        if req_file.exists() and req_file.parent.name != "mock":
+            try:
+                req_file.write_text(
+                    json.dumps(requirement_to_dict(req_obj), ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+            except OSError as exc:
+                print(f"（需求文件没能回写：{exc}）", flush=True)
+        print(f"需求已保存：{req_obj.name}", flush=True)
+
+    httpd = serve(results, req, cands, host=args.host, port=args.port, on_save=_save)
     url = f"http://{args.host}:{args.port}/"
     print(f"看板已启动：{url}  （Ctrl+C 停止）")
     print(f"数据来源：{'mock 示例' if args.mock else args.db or load_config().db_path}")
