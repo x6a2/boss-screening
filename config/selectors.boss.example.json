@@ -20,9 +20,11 @@
       "href": "a"
     },
     "paging": {
+      "_note": "列表不认 page 参数，只能滚到底触发加载；连续 stall_limit 次没新卡片才算到底",
       "mode": "scroll",
       "scroll_container": ".bosschat-conversation-wrap",
-      "max_scrolls": 10
+      "max_scrolls": 10,
+      "stall_limit": 3
     }
   },
 

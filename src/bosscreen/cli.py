@@ -176,7 +176,7 @@ def cmd_collect(args: argparse.Namespace) -> int:
 
     cfg = load_config()
     if args.fixture:
-        list_url = (ROOT / "tests" / "fixtures" / "list.html").as_uri()
+        list_url = args.list_url or (ROOT / "tests" / "fixtures" / "list.html").as_uri()
         delay = (0.0, 0.0)
     else:
         list_url = args.list_url or sel.get("conversation_list", {}).get("url")
@@ -200,6 +200,8 @@ def cmd_collect(args: argparse.Namespace) -> int:
         rows = col.list_page(list_url)
         urls = [urllib.parse.urljoin(list_url, r["href"]) for r in rows if r.get("href")]
         print(f"列表页 {len(rows)} 条，其中 {len(urls)} 条有详情链接")
+        for line in col.log:
+            print(f"  · {line}")
         details = col.collect(urls, limit=args.limit)
     except (RiskDetected, BudgetExceeded) as exc:
         print(f"中止：{exc}")

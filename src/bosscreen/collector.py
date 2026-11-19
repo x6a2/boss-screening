@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -51,8 +52,43 @@ def list_js(spec: dict[str, Any]) -> str:
 }})()"""
 
 
-def detail_js(spec: dict[str, Any]) -> str:
+def count_js(spec: dict[str, Any]) -> str:
+    """列表里当前有多少条——翻页时用它判断"还有没有新的"。"""
     return f"""(() => {{
+  const SPEC = {json.dumps(spec, ensure_ascii=False)};
+  const wrap = document.querySelector(SPEC.container || 'body') || document;
+  return wrap.querySelectorAll(SPEC.item || ':scope > *').length;
+}})()"""
+
+
+def scroll_js(spec: dict[str, Any]) -> str:
+    """把列表滚到底，并补发 scroll 事件——BOSS 的列表靠滚动事件加载，不认 page 参数。"""
+    return f"""(() => {{
+  const SPEC = {json.dumps(spec, ensure_ascii=False)};
+  const box = SPEC.scroll_container ? document.querySelector(SPEC.scroll_container) : null;
+  const target = box || document.scrollingElement || document.body;
+  target.scrollTop = target.scrollHeight;
+  window.scrollTo(0, (document.scrollingElement || document.body).scrollHeight);
+  window.dispatchEvent(new Event('scroll'));
+  if (box) box.dispatchEvent(new Event('scroll'));
+  return JSON.stringify({{scrollTop: target.scrollTop, scrollHeight: target.scrollHeight}});
+}})()"""
+
+
+def merge_rows(existing: list[dict[str, Any]], incoming: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按 href（没有就按 姓名+岗位）合并；滚动会把同一批卡片重新抽一遍，必须去重。"""
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for row in list(existing) + list(incoming):
+        key = row.get("href") or f"{row.get('name')}|{row.get('job')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    return merged
+
+
+def detail_js(spec: dict[str, Any]) -> str:    return f"""(() => {{
   const SPEC = {json.dumps(spec, ensure_ascii=False)};
   const clean = s => (s || '').replace(/\\s+/g, ' ').trim();
   const root = document.querySelector(SPEC.container || 'body');
@@ -89,16 +125,30 @@ def risk_js(markers: dict[str, Any]) -> str:
 }})()"""
 
 
-def _wait_ready(sess, timeout: float = 25.0) -> None:
-    """等页面 readyState=complete。超时不抛错——有些页面永远不 complete。"""
+def _norm_url(url: str) -> str:
+    """把 URL 规整成可比较的形式：去 #fragment、解码 %20、去掉末尾斜杠。"""
+    return urllib.parse.unquote(url).split("#")[0].rstrip("/")
+
+
+def _wait_ready(sess, url: str | None = None, timeout: float = 25.0) -> None:
+    """等页面真正就位。
+
+    只等 readyState=complete 是不够的：新开的标签页一开始就是 about:blank 且已经 complete，
+    立刻 eval 会读到空白页（实际踩过：详情页报"容器找不到"，其实只是还没加载）。
+    所以给了 url 就要求 location.href 也对得上。
+    """
+    target = _norm_url(url) if url else None
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            if sess.eval("document.readyState") == "complete":
-                return
+            info = json.loads(sess.eval("JSON.stringify({href: location.href, ready: document.readyState})"))
+            href = _norm_url(info.get("href") or "")
+            if info.get("ready") == "complete" and href != "about:blank":
+                if target is None or href.startswith(target) or target.startswith(href):
+                    return
         except Exception:  # noqa: BLE001 - 页面导航中断是正常的
             pass
-        time.sleep(0.5)
+        time.sleep(0.2)
 
 
 @dataclass
@@ -148,7 +198,7 @@ class Collector:
         self.usage.reserve(self.daily_limit)
         tab = transport.open_tab(self.port, url)
         sess = transport.CDPSession(tab["webSocketDebuggerUrl"])
-        _wait_ready(sess)
+        _wait_ready(sess, url)
         self._check_risk(sess)
         return tab, sess
 
@@ -182,18 +232,50 @@ class Collector:
         time.sleep(lo + (hi - lo) * ((time.time() * 1000) % 1000) / 1000)
 
     # --- 对外 ---------------------------------------------------------
+    def _extract_list(self, sess) -> list[dict[str, Any]]:
+        raw = sess.eval(list_js(self.list_spec))
+        return json.loads(raw).get("rows", [])
+
+    def _paginate(self, sess, rows: list[dict[str, Any]], paging: dict[str, Any]) -> list[dict[str, Any]]:
+        """滚动加载。连续 stall_limit 次没有新卡片才认定到底——真页面是异步加载，一次没长不代表没了。"""
+        max_scrolls = int(paging.get("max_scrolls") or 10)
+        stall_limit = max(1, int(paging.get("stall_limit") or 3))
+        spec = {**self.list_spec, "scroll_container": paging.get("scroll_container") or self.list_spec.get("container")}
+        stall = 0
+        for i in range(max_scrolls):
+            before = len(rows)
+            sess.eval(scroll_js(spec))
+            self._sleep()  # 滚动之后要等懒加载那一批进来
+            rows = merge_rows(rows, self._extract_list(sess))
+            self._check_risk(sess)
+            if len(rows) == before:
+                stall += 1
+                self.log.append(f"第 {i + 1} 次滚动没有新卡片（{stall}/{stall_limit}）")
+                if stall >= stall_limit:
+                    self.log.append(f"连续 {stall_limit} 次没有新卡片，认为到底（共 {len(rows)} 条）")
+                    break
+            else:
+                stall = 0
+                self.log.append(f"第 {i + 1} 次滚动后 {len(rows)} 条")
+        else:
+            if max_scrolls:
+                self.log.append(f"已滚到配置上限 {max_scrolls} 次（共 {len(rows)} 条），可能还有更多")
+        return rows
+
     def list_page(self, url: str | None = None) -> list[dict[str, Any]]:
         target = url or self.list_spec.get("url")
         if not target:
             raise ValueError("列表页 URL 未配置")
         tab, sess = self._open(target)
         try:
-            raw = sess.eval(list_js(self.list_spec))
+            rows = self._extract_list(sess)
+            self.log.append(f"列表页首屏 {len(rows)} 条")
+            paging = self.list_spec.get("paging") or {}
+            if paging.get("mode") == "scroll" and rows:
+                rows = self._paginate(sess, rows, paging)
         finally:
             self._close(tab, sess)
-        data = json.loads(raw)
-        self.log.append(f"列表页取到 {data.get('count', 0)} 条")
-        return data.get("rows", [])
+        return rows
 
     def detail_page(self, url: str) -> dict[str, Any]:
         self._sleep()

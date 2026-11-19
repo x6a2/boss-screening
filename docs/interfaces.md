@@ -132,3 +132,19 @@ requirements(id PK, name, definition JSON, created_at)
 - 校验失败 → HTTP 400，`{"error": "需求名称不能为空；阈值要在 0-100 之间；..."}`（中文、可直接展示）
 - 校验通过但落库失败 → HTTP 200，`saved.ok=false` + `error`，**分数仍然按新需求重算**（页面不假装成功）
 - 校验通过且落库成功 → `saved.ok=true`，同时把用户的 `--requirement` 文件回写（`mock` 目录下的样例不动）
+
+## 滚动翻页的约定
+
+`collector.list_spec["paging"]`：
+
+```json
+{"mode": "scroll", "scroll_container": "...", "max_scrolls": 10, "stall_limit": 3}
+```
+
+- `mode` 只认 `scroll`；没有这一段就只取首屏
+- 每轮：滚动到底 → `_sleep()` 等懒加载 → 重新抽整页 → `merge_rows` 按 href（缺 href 时用 姓名+岗位）去重 → 风控检查
+- 连续 `stall_limit` 次没新卡片 → 认定到底；到 `max_scrolls` 还没到底 → 日志明确写"可能还有更多"
+- 滚动只在同一个 CDP 会话里做，不重新导航，所以**不额外计一次页面预算**
+
+`_wait_ready(sess, url)` 必须同时满足 `readyState=complete` **且** `location.href` 与目标 URL 对得上。
+少了后半句就会读到新标签页的初始 `about:blank`——它本来就是 complete。

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>投递列表（滚动加载样例）</title>
+<style>
+  .bosschat-conversation-wrap { height: 120px; overflow-y: auto; border: 1px solid #ccc; }
+  .bosschat-conversation-item { padding: 6px; }
+</style>
+</head>
+<body>
+<p>这个页面模拟「滚到底才加载下一批」的列表：一开始 3 条，每次滚到底再补 2 条，最多 9 条。</p>
+<div class="bosschat-conversation-wrap">
+  <div class="bosschat-conversation-item">
+    <a href="resume-zhangwei.html"><span class="geek-name">张伟</span></a>
+    <span class="bosschat-geek-job">后端开发工程师</span>
+    <span class="chat-message-text">我对这个岗位很感兴趣</span>
+  </div>
+  <div class="bosschat-conversation-item">
+    <a href="resume-liuyang.html"><span class="geek-name">刘洋</span></a>
+    <span class="bosschat-geek-job">后端工程师</span>
+    <span class="chat-message-text">您好</span>
+  </div>
+  <div class="bosschat-conversation-item">
+    <a href="resume-wangqiang.html"><span class="geek-name">王强</span></a>
+    <span class="bosschat-geek-job">后端开发</span>
+    <span class="chat-message-text">想了解一下职位</span>
+  </div>
+</div>
+<script>
+  // 每批 2 条，最多补到 9 条；补完就再也不长了 —— 用来验证「到底了就停」
+  const MORE = [
+    ['陈晨', '服务端工程师', 'resume-chenchen.html'],
+    ['赵敏', '后端开发', 'resume-zhaomin.html'],
+    ['孙浩', 'Python 工程师', 'resume-sunhao.html'],
+    ['周洁', 'API 开发', 'resume-zhoujie.html'],
+    ['吴磊', 'Java 工程师', 'resume-wulei.html'],
+    ['郑楠', 'DevOps', 'resume-zhengnan.html'],
+  ];
+  const wrap = document.querySelector('.bosschat-conversation-wrap');
+  let next = 0;
+  function more() {
+    for (let i = 0; i < 2 && next < MORE.length; i++, next++) {
+      const [name, job, href] = MORE[next];
+      const div = document.createElement('div');
+      div.className = 'bosschat-conversation-item';
+      div.innerHTML = `<a href="${href}"><span class="geek-name">${name}</span></a>
+        <span class="bosschat-geek-job">${job}</span>
+        <span class="chat-message-text">你好</span>`;
+      wrap.appendChild(div);
+    }
+  }
+  let lastCount = 0;
+  wrap.addEventListener('scroll', () => {
+    const atBottom = wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - 8;
+    if (!atBottom) return;
+    const count = wrap.children.length;
+    if (count !== lastCount) { lastCount = count; return; }  // 同一次滚动不重复补
+    more();
+  });
+</script>
+</body></html>
