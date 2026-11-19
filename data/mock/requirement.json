@@ -1,0 +1,39 @@
+{
+  "name": "深圳 · 后端工程师（Python 方向）",
+  "threshold": 60,
+  "must": [
+    { "field": "work_years", "op": "gte", "value": 3, "label": "3 年以上经验" },
+    { "field": "degree", "op": "gte", "value": "本科", "label": "本科及以上" },
+    { "field": "expect_city", "op": "contains_any", "value": ["深圳"], "label": "期望城市含深圳" }
+  ],
+  "nice": [
+    {
+      "field": "skills",
+      "op": "contains_any",
+      "value": ["Python", "Go"],
+      "label": "会 Python 或 Go",
+      "weight": 3
+    },
+    {
+      "field": "current_title",
+      "op": "contains_any",
+      "value": ["后端", "服务端"],
+      "label": "现任岗位是后端/服务端",
+      "weight": 2
+    },
+    {
+      "field": "expect_salary",
+      "op": "lte",
+      "value": 35,
+      "label": "期望薪资不高于 35K",
+      "weight": 1
+    },
+    {
+      "field": "work_years",
+      "op": "gte",
+      "value": 5,
+      "label": "5 年以上经验（加分）",
+      "weight": 1
+    }
+  ]
+}

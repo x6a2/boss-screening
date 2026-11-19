@@ -1,0 +1,9 @@
+# 复制为 config.toml 后按需修改。这个文件进仓库，含本机路径的不要进。
+db_path = "data/bosscreen.db"
+
+# 采集节流（秒）。没有招聘号验证前，宁可慢。
+throttle_min_seconds = 3.0
+throttle_max_seconds = 7.0
+
+# 每天最多读多少个页面（列表页 + 详情页合计）
+daily_page_limit = 300

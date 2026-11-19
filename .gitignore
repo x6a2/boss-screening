@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# 本地数据：简历与配置都含个人信息，绝不入库
+data/bosscreen.db
+data/bosscreen.db-*
+data/local/
+config.local.toml
+*.log
+
+.DS_Store
+Thumbs.db

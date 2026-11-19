@@ -1,0 +1,40 @@
+{
+  "_readme": [
+    "这是招聘端 BOSS 页面的选择器配置。",
+    "开发环境没有企业招聘者账号，因此这里的值【尚未在真机校准】。",
+    "标了 TODO 的键表示推测值，第一次真实运行时必须逐个确认并替换。",
+    "改版时只改这个文件，不要改代码。"
+  ],
+  "version": 1,
+  "calibrated": false,
+  "conversation_list": {
+    "_note": "投递/沟通列表（conversationType=牛人发起）",
+    "container": ".bosschat-conversation-wrap",
+    "item": ".bosschat-conversation-item",
+    "name": ".geek-name",
+    "job": ".bosschat-geek-job",
+    "last_message": ".chat-message-text",
+    "unread": ".unread-count",
+    "next_page": "TODO: 滚动容器的触发方式"
+  },
+  "resume_detail": {
+    "_note": "在线简历详情面板",
+    "container": ".resume-content",
+    "name": ".geek-name",
+    "base_info": ".resume-item.item-base",
+    "degree": "TODO: 学历字段选择器",
+    "work_years": "TODO: 工作年限字段选择器",
+    "expect": ".resume-content .expect",
+    "salary": "TODO: 期望薪资选择器",
+    "experience": ".resume-content .resume-item",
+    "skills": "TODO: 技能标签选择器"
+  },
+  "risk_markers": {
+    "_note": "命中任意一项立即停止本轮采集并记录",
+    "captcha": [".geetest_panel", "[class*=captcha]", "iframe[src*=captcha]"],
+    "login_wall": ["/web/user/login", "?ka=header-login"],
+    "blocked_paths": ["/403", "/forbidden", "access-denied"],
+    "blocked_titles": ["账号异常", "账号受限", "访问被拒绝"],
+    "rate_limited": ["操作频繁", "访问频繁", "请求频繁", "稍后再试", "频率限制"]
+  }
+}
