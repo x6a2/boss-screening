@@ -25,7 +25,10 @@
 
 ## 状态
 
-**早期开发中。** 采集层尚未在真实招聘账号上校准（开发时无可用账号），当前版本可以在 mock 数据上跑通完整链路。
+**早期开发中。** 整条链路已经在样例页面上跑通；**真实页面的选择器还没校准**（开发时没有企业招聘账号）。
+
+这意味着：`collect` 会先看 `calibrated` 标志，未校准直接拒绝——不会拿猜测的选择器去真机上乱抓。
+有账号之后的校准步骤写在 [docs/state.md](docs/state.md#有账号之后)，就是"填选择器 + 打开开关"两件事。
 
 ## 快速开始
 
@@ -35,7 +38,15 @@ python -m bosscreen.cli serve --mock  # 打开本地看板 http://127.0.0.1:8686
 python -m bosscreen.cli doctor        # 自检：配置、浏览器、选择器
 ```
 
-不需要浏览器、不需要账号、不联网（`doctor` 除外，它只连你本机已开着的 Chrome）。
+不需要浏览器、不需要账号、不联网（`doctor` 和 `collect` 除外，它们只连你本机已开着的 Chrome）。
+
+想验证"从页面取数"这条路，用自带样例页面跑一遍（仍然只读、不联网）：
+
+```bash
+# 先起一个带调试端口的 Chrome
+chrome.exe --headless=new --remote-debugging-port=9334 --user-data-dir=%TEMP%\cdptest
+python -m bosscreen.cli collect --fixture --selectors tests/fixtures/selectors.fixture.json --port 9334
+```
 
 也可以 `pip install -e .` 后用 `bosscreen demo`。注意这一步要联网拉 setuptools；
 离线机器直接用 `python -m bosscreen` 即可，功能完全一样。

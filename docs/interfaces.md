@@ -6,7 +6,7 @@
 cli.py            命令入口（demo / doctor / collect / serve）
   ├─ cdp.py        最小 WebSocket + CDP 客户端（Runtime.evaluate）
   ├─ transport.py  Chrome 调试端口 HTTP 侧：探测、列标签、开/关标签
-  ├─ collector/   采集：CDP → 页面 DOM → 原始 dict（唯一依赖浏览器的层，未实现）
+  ├─ collector.py 采集：CDP → 选择器 → 原始 dict（唯一依赖浏览器的层）
   ├─ parsing.py   原始 dict → Candidate（纯函数，可单测）
   ├─ scoring.py   需求 × Candidate → ScoreResult（纯函数，可单测）
   ├─ draft.py     候选人 + 评分 → 招呼语文本（纯函数，只出文本）
@@ -90,3 +90,15 @@ requirements(id PK, name, definition JSON, created_at)
 ```
 
 代码只通过键名取值；缺失的键必须报"未配置"，不能静默返回空。
+
+## 采集层的约定
+
+`collector.Collector` 只做三件事：开标签、跑一段由配置生成的 JS、关标签。它不知道 BOSS 的任何类名。
+
+- `list_js(spec)` / `detail_js(spec)`：把选择器配置 JSON 编码进表达式，返回 JSON 字符串
+- 详情页找不到 `container` 时返回 `{_error: "container-not-found"}`，调用方**必须**报错停下（不静默给空数据）
+- `_check_risk` 每次导航后跑一次；命中验证码/登录墙/限流 → `RiskDetected`，整轮停
+- `Usage` 记 `data/usage.json`：当天读了几页；超 `daily_page_limit` → `BudgetExceeded`
+- `calibrated=false` 的选择器由 cli 拦下，采集器本身不管这个（它只认参数）
+
+原始 dict 的键名 = 选择器配置里 `fields` 的键名（snake_case），由 `parsing.FIELD_MAP` 映射到 `Candidate`。

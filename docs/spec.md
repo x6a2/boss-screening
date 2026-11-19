@@ -51,8 +51,10 @@
 | A3 | 同一个人多次投递只出现一次 | 单测覆盖 |
 | A4 | 每条打分给出可读理由 | 名单里能看到命中/缺失条目 |
 | A5 | 选择器不写在代码里 | 改 `config/selectors.*.json` 即可适配 |
-| A6 | 启动自检能报告"页面结构是否可读" | `bosscreen doctor` |
+| A6 | 启动自检能报告"页面结构是否可读" | `bosscreen doctor`（连上 Chrome 后检查容器是否命中） |
 | A7 | 全链路无对外写操作 | 代码里不存在发送函数 |
+| A8 | 采集管线在样例页面上端到端跑通 | `collect --fixture` + `tests/test_collector_live.py` |
+| A9 | 未校准的选择器不允许上真机 | `collect` 在 `calibrated=false` 时返回 1 |
 
 ## 6. 非目标
 
