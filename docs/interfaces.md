@@ -11,6 +11,7 @@ cli.py            命令入口（demo / doctor / collect / serve）
   ├─ scoring.py   需求 × Candidate → ScoreResult（纯函数，可单测）
   ├─ draft.py     候选人 + 评分 → 招呼语文本（纯函数，只出文本）
   ├─ store.py     SQLite 持久化
+  ├─ export.py    评分结果 → CSV 文本/文件（纯函数，未知字段留空）
   └─ web.py       本地看板（标准库 http.server）
 ```
 
@@ -113,6 +114,8 @@ requirements(id PK, name, definition JSON, created_at)
 | GET | `/api/board` | 当前需求 + 名单 + 筛选用的 facets + 可编辑的 spec/choices |
 | POST | `/api/draft` | `{uid}` → `{text}`，招呼语草稿（只出文本） |
 | POST | `/api/requirement` | `spec` → 校验、重算、落库，返回新的 board payload |
+| POST | `/api/scheme` | `{id}` → 读库里的另一份方案、重算，返回新的 board payload（找不到 404） |
+| GET | `/api/export.csv` | 当前名单的 CSV（`text/csv; charset=utf-8`，带 BOM，文件名同 `export.filename_for`） |
 
 `/api/board` 的形状：
 
@@ -123,7 +126,8 @@ requirements(id PK, name, definition JSON, created_at)
   "choices":{"fields": [["work_years","工作年限"], ...], "ops": [["gte","大于等于"], ...]},
   "facets": {"cities": ["深圳"], "degrees": ["硕士","本科"]},
   "rows":   [{"uid": "...", "total": 85.7, "passed_must": true, "pending": [], "coverage": 1.0, "cand": {...}}],
-  "saved":  {"ok": true, "error": null}
+  "saved":  {"ok": true, "error": null},
+  "schemes":[{"id": "严格版", "name": "严格版", "created_at": "..."}]
 }
 ```
 
@@ -132,6 +136,9 @@ requirements(id PK, name, definition JSON, created_at)
 - 校验失败 → HTTP 400，`{"error": "需求名称不能为空；阈值要在 0-100 之间；..."}`（中文、可直接展示）
 - 校验通过但落库失败 → HTTP 200，`saved.ok=false` + `error`，**分数仍然按新需求重算**（页面不假装成功）
 - 校验通过且落库成功 → `saved.ok=true`，同时把用户的 `--requirement` 文件回写（`mock` 目录下的样例不动）
+
+`/api/scheme` 的约定：切换是只读动作，**不写库**；找不到方案返回 404 + 中文 `error`。
+`schemes` 为空数组表示当前是 `--mock` 或不带库运行，页面据此隐藏下拉框。
 
 ## 滚动翻页的约定
 

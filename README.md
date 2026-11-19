@@ -72,6 +72,14 @@ python -m bosscreen.cli collect --fixture --selectors tests/fixtures/selectors.f
 
 ![编辑需求](docs/img/editor.png)
 
+需求可以存多份，用右上角的下拉切换：比如"严格版"先筛一遍，再切到"放宽版"看看差点什么。
+改名保存就是另存为新方案，同名保存就是覆盖。切方案只重算、不写库。
+
+名单可以导出成 CSV（右上角"导出 CSV"，或 `bosscreen export`）：
+UTF-8 带 BOM，Excel 直接打开不乱码；简历里没有的字段留空，不填 0。
+
+![方案与导出](docs/img/schemes.png)
+
 ## 文档
 
 - [需求与验收](docs/spec.md)

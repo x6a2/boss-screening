@@ -9,6 +9,7 @@ python -m bosscreen.cli demo              # mock 数据跑通：解析 → 打�
 python -m bosscreen.cli serve --mock      # 本地看板 http://127.0.0.1:8686/
 python -m bosscreen.cli doctor            # 自检：配置、浏览器可达性、选择器
 python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 选择器 → 名单"整条链路
+python -m bosscreen.cli export --mock     # 把名单导成 CSV（UTF-8 BOM，Excel 直接开）
 ```
 
 `python -m bosscreen ...` 与 `bosscreen ...` 等价。
@@ -38,7 +39,10 @@ python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 
 - [x] 修掉"新标签页还没加载完就去读"的竞态（新页一开始是 about:blank 且已 complete，会误判为加载完成）
 - [x] **选择器体检 `bosscreen check`**：容器在不在、几条、每个字段命中几个、样本是什么；容器没命中直接退出 3，字段没命中退出 1，全命中才提示可以置 `calibrated=true`
 - [x] **可发布性验证**：全新 `git clone` 到临时目录 → `python -m bosscreen demo` 与 55 条测试都通过；仓库无 pip 临时目录残留
-- [x] 单测 55 条（含 6 条需要 Chrome 的端到端测试，默认跳过：滚动到底 / 短列表不空转 / 详情页紧接打开能读到 / 体检命中数与样本 / 容器错要报告不抛错）
+- [x] **多份需求方案**：方案以需求名为主键，看板右上角下拉切换；切换只重算不落库
+- [x] **名单导出 CSV**：看板"导出 CSV"与 `bosscreen export`；13 列、UTF-8 BOM、未知字段留空
+- [x] **理由可读**：看板里改出来的条件自动生成中文名（"会 Python 或 Go"），理由里不再出现 `skills contains_any [...]`
+- [x] 单测 70 条（含 6 条需要 Chrome 的端到端测试，默认跳过：滚动到底 / 短列表不空转 / 详情页紧接打开能读到 / 体检命中数与样本 / 容器错要报告不抛错）
 
 ## 未完成
 
@@ -58,9 +62,9 @@ python -m bosscreen.cli collect --fixture # 用样例页面跑通"浏览器 → 
 ## 下一步（无账号也能做）
 
 1. 简历字段解析更细（项目经历、教育经历、求职状态）
-2. 看板导出名单（CSV）
-3. 草稿的可选 LLM 改写（现在纯模板）
-4. 多份需求方案并存（现在只有一份当前需求）
+2. 草稿的可选 LLM 改写（现在纯模板）
+3. 看板里对比两个方案的差异（现在只能切来切去）
+4. 发布到 GitHub（需要远端地址与推送凭据）
 
 **有账号后的第一天**：开 9222 的 Chrome 登录招聘端 → `bosscreen check --kind list --page <投递列表 URL>` 改到全 ✓ →
 `bosscreen check --kind detail --page <某个在线简历 URL>` 改到全 ✓ → 置 `calibrated=true` → `collect --limit 2`。

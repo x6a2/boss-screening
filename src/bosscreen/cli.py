@@ -12,9 +12,10 @@ from pathlib import Path
 from . import transport
 from .collector import BudgetExceeded, Collector, RiskDetected, Usage
 from .config import load_config, load_selectors, check_selectors
+from .export import filename_for, to_csv
 from .models import Candidate
 from .parsing import dedupe, from_platform
-from .requirement import load_requirement, requirement_to_dict
+from .requirement import load_requirement, requirement_from_dict, requirement_to_dict
 from .scoring import rank
 from .store import Store
 from .web import serve
@@ -307,6 +308,29 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    """把当前名单导成 CSV，给要交表/要发群里的人。"""
+    if args.mock:
+        cands = dedupe(_load_mock())
+    else:
+        store = Store(args.db or load_config().db_path)
+        try:
+            cands = store.load_candidates()
+        finally:
+            store.close()
+    if not cands:
+        print("没有候选人。先跑 `bosscreen demo` 或 `collect`。")
+        return 1
+    req = load_requirement(args.requirement)
+    results = rank(cands, req)
+    out = Path(args.out) if args.out else Path.cwd() / filename_for(req)
+    text = to_csv(results, {c.uid: c for c in cands}, out)
+    passed = sum(1 for r in results if r.passed_must)
+    print(f"已导出 {len(results)} 人（过硬条件 {passed} 人）→ {out}")
+    print(f"编码 utf-8-sig，Excel 直接打开不乱码；共 {len(text.splitlines()) - 1} 行数据")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     cands = dedupe(_load_mock()) if args.mock else load_store_candidates(args.db)
     if not cands:
@@ -336,7 +360,27 @@ def cmd_serve(args: argparse.Namespace) -> int:
                 print(f"（需求文件没能回写：{exc}）", flush=True)
         print(f"需求已保存：{req_obj.name}", flush=True)
 
-    httpd = serve(results, req, cands, host=args.host, port=args.port, on_save=_save)
+    def _list_schemes() -> list[dict]:
+        store = Store(db_path)
+        try:
+            return store.list_requirements()
+        finally:
+            store.close()
+
+    def _load_scheme(scheme_id: str):
+        store = Store(db_path)
+        try:
+            spec = store.load_requirement(scheme_id)
+        finally:
+            store.close()
+        if not spec:
+            return None
+        return requirement_from_dict(spec), spec
+
+    httpd = serve(
+        results, req, cands, host=args.host, port=args.port, on_save=_save,
+        list_schemes=_list_schemes, load_scheme=_load_scheme,
+    )
     url = f"http://{args.host}:{args.port}/"
     print(f"看板已启动：{url}  （Ctrl+C 停止）")
     print(f"数据来源：{'mock 示例' if args.mock else args.db or load_config().db_path}")
@@ -392,6 +436,13 @@ def main(argv: list[str] | None = None) -> int:
     p_check.add_argument("--daily-limit", type=int, default=None, help="当天页面预算")
     p_check.add_argument("--usage", default=None, help="当日用量文件路径")
     p_check.set_defaults(func=cmd_check)
+
+    p_exp = sub.add_parser("export", help="把名单导出成 CSV")
+    p_exp.add_argument("--mock", action="store_true", help="用内置示例数据")
+    p_exp.add_argument("--db", default=None, help="本地库路径")
+    p_exp.add_argument("--requirement", default=str(ROOT / "data" / "mock" / "requirement.json"))
+    p_exp.add_argument("--out", default=None, help="输出文件（默认按需求名生成）")
+    p_exp.set_defaults(func=cmd_export)
 
     p_serve = sub.add_parser("serve", help="启动本地看板（只读）")
     p_serve.add_argument("--mock", action="store_true", help="用内置示例数据")

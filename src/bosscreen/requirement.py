@@ -89,6 +89,71 @@ def _split_value(value: Any) -> list[str]:
     return [p.strip() for p in re.split(r"[,，/、\s]+", str(value)) if p.strip()]
 
 
+
+FIELD_LABELS = {
+    "work_years": "工作经验",
+    "degree": "学历",
+    "expect_city": "期望城市",
+    "expect_salary": "期望薪资",
+    "skills": "技能",
+    "current_title": "当前职位",
+    "current_company": "当前公司",
+    "expect_title": "期望职位",
+    "age": "年龄",
+    "school": "学校",
+    "gender": "性别",
+}
+
+_OP_PHRASES = {
+    "gte": "大于等于",
+    "lte": "小于等于",
+    "eq": "等于",
+    "ne": "不等于",
+    "contains_any": "包含任一",
+    "contains_all": "包含全部",
+    "in": "属于",
+    "exists": "有填写",
+}
+
+
+def _value_text(value):
+    if isinstance(value, list):
+        return "、".join(str(v) for v in value)
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _auto_label(field: str, op: str, value) -> str:
+    """给条件生成一句人话，直接进打分理由。老板看不懂 skills contains_any [] 这种。"""
+    text = _value_text(value)
+    if field == "skills" and op == "contains_any":
+        return "会 " + " 或 ".join(str(v) for v in value)
+    if field == "skills" and op == "contains_all":
+        return "会 " + text
+    if field == "expect_city" and op in ("contains_any", "in"):
+        return "期望城市含 " + " 或 ".join(str(v) for v in value)
+    if field == "degree" and op == "gte":
+        return f"学历 {text} 及以上"
+    if field == "degree" and op == "lte":
+        return f"学历不高于 {text}"
+    if field == "work_years" and op == "gte":
+        return f"至少 {text} 年经验"
+    if field == "work_years" and op == "lte":
+        return f"经验不超过 {text} 年"
+    if field == "age" and op == "lte":
+        return f"年龄不超过 {text} 岁"
+    if field == "age" and op == "gte":
+        return f"年龄不低于 {text} 岁"
+    if field == "expect_salary" and op == "lte":
+        return f"期望薪资不高于 {text}"
+    if op == "exists":
+        return f"{FIELD_LABELS.get(field, field)}有填写"
+    return f"{FIELD_LABELS.get(field, field)} {_OP_PHRASES.get(op, op)} {text}"
+
+
 def prepare_spec(spec: dict[str, Any]) -> dict[str, Any]:
     """把看板提交的需求规整成合法结构；不合法就抛 ValueError（带人能看懂的原因）。"""
     problems: list[str] = []
@@ -147,9 +212,8 @@ def prepare_spec(spec: dict[str, Any]) -> dict[str, Any]:
                 except (TypeError, ValueError):
                     problems.append(f"{pos}：权重要是数字")
                     continue
-            label = str(item.get("label") or "").strip()
-            if label:
-                row["label"] = label
+            label = str(item.get("label") or "").strip() or _auto_label(field, op, value)
+            row["label"] = label
             out.append(row)
         return out
 

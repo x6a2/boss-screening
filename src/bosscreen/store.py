@@ -104,5 +104,18 @@ class Store:
         )
         self.conn.commit()
 
+    def list_requirements(self) -> list[dict]:
+        """所有存过的需求方案，新的在前。看板用它放下拉框。"""
+        rows = self.conn.execute(
+            "SELECT id, name, created_at FROM requirements ORDER BY created_at DESC, name"
+        ).fetchall()
+        return [{"id": r["id"], "name": r["name"], "created_at": r["created_at"]} for r in rows]
+
+    def load_requirement(self, req_id: str) -> dict | None:
+        row = self.conn.execute("SELECT definition FROM requirements WHERE id=?", (req_id,)).fetchone()
+        if not row:
+            return None
+        return json.loads(row["definition"])
+
     def close(self) -> None:
         self.conn.close()

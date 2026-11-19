@@ -134,5 +134,39 @@ class TestBoardApply(unittest.TestCase):
         self.assertEqual(board.req.name, "改", "存不上也不该回滚已经算好的分")
 
 
+class TestAutoLabels(unittest.TestCase):
+    """条件没写 label 时也要给人话，理由里不能出现 skills contains_any ['Python']。"""
+
+    def test_common_shapes(self):
+        cases = [
+            ({"field": "skills", "op": "contains_any", "value": ["Python", "Go"]}, "会 Python 或 Go"),
+            ({"field": "skills", "op": "contains_all", "value": ["Python", "Go"]}, "会 Python、Go"),
+            ({"field": "expect_city", "op": "contains_any", "value": ["深圳"]}, "期望城市含 深圳"),
+            ({"field": "degree", "op": "gte", "value": "本科"}, "学历 本科 及以上"),
+            ({"field": "work_years", "op": "gte", "value": "5"}, "至少 5 年经验"),
+            ({"field": "age", "op": "lte", "value": "35"}, "年龄不超过 35 岁"),
+            ({"field": "expect_salary", "op": "lte", "value": "35"}, "期望薪资不高于 35"),
+            ({"field": "school", "op": "exists", "value": ""}, "学校有填写"),
+        ]
+        for item, want in cases:
+            with self.subTest(want=want):
+                spec = prepare_spec({"name": "x", "must": [item]})
+                self.assertEqual(spec["must"][0]["label"], want)
+
+    def test_explicit_label_wins(self):
+        spec = prepare_spec({"name": "x", "must": [{"field": "degree", "op": "gte", "value": "本科", "label": "统招本科"}]})
+        self.assertEqual(spec["must"][0]["label"], "统招本科")
+
+    def test_reason_uses_the_label(self):
+        req = requirement_from_dict(prepare_spec({
+            "name": "x", "threshold": 1,
+            "nice": [{"field": "skills", "op": "contains_any", "value": ["Python"], "weight": 1}],
+        }))
+        cands = [Candidate(uid="a", name="甲", skills=["Python"])]
+        top = rank(cands, req)[0]
+        self.assertIn("会 Python", top.reason)
+        self.assertNotIn("contains_any", top.reason)
+
+
 if __name__ == "__main__":
     unittest.main()

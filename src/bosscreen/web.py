@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from urllib.parse import quote
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .draft import build_draft
+from .export import filename_for, to_csv
 from .models import Candidate, Requirement, ScoreResult
 from .requirement import (
     FIELD_CHOICES,
@@ -44,6 +46,7 @@ PAGE = """<!doctype html>
   .filters button { background:transparent; color:var(--dim); border:1px solid var(--line);
                     padding:4px 10px; border-radius:999px; cursor:pointer; font-size:13px; }
   .filters button.on { color:var(--text); border-color:var(--accent); background:#1b2534; }
+  select#schemeSel { max-width:220px; }
   select { background:var(--panel); color:var(--text); border:1px solid var(--line);
            border-radius:6px; padding:4px 8px; font-size:13px; }
   .chk { color:var(--dim); font-size:13px; display:flex; gap:6px; align-items:center;
@@ -96,7 +99,9 @@ PAGE = """<!doctype html>
   <h1>简历筛选看板</h1>
   <span class="req" id="req"></span>
   <span class="req" id="stat"></span>
-  <button class="btn ghost" id="editReq" style="margin-left:auto">编辑需求</button>
+  <select id="schemeSel" title="需求方案" style="margin-left:auto; display:none"></select>
+  <button class="btn ghost" id="exportCsv">导出 CSV</button>
+  <button class="btn ghost" id="editReq">编辑需求</button>
 </header>
 <div class="filters" id="filters">
   <button data-f="all" class="on">全部</button>
@@ -275,51 +280,73 @@ function closeEditor() {
   document.getElementById('modal').classList.remove('on');
 }
 
+async function postJson(url, body) {
+  const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)});
+  let data = {};
+  try { data = await res.json(); } catch (e) { data = {error:'服务端返回的不是 JSON'}; }
+  if (!res.ok) return {error: data.error || ('HTTP ' + res.status)};
+  return data;
+}
+
+function applyPayload(d) {
+  DATA = d;
+  DEGS = d.facets.degrees;
+  const citySel = document.getElementById('city'), degSel = document.getElementById('deg');
+  const keepCity = citySel.value, keepDeg = degSel.value;
+  citySel.length = 1; degSel.length = 1;
+  d.facets.cities.forEach(c => citySel.add(new Option(c, c)));
+  DEGS.forEach(c => degSel.add(new Option(c + '及以上', c)));
+  citySel.value = keepCity; degSel.value = keepDeg;
+  if (!degsOk(keepDeg)) degSel.value = '';
+  CUR = null;
+  document.getElementById('side').classList.remove('on');
+  document.getElementById('req').textContent = d.req.name;
+  render();
+  renderSchemes();
+}
+
+function degsOk(deg) { return !deg || DEGS.includes(deg); }
+
 async function saveReq() {
   const err = document.getElementById('reqErr');
   err.textContent = '';
-  const res = await fetch('/api/requirement', {method:'POST',
-    headers:{'Content-Type':'application/json'}, body: JSON.stringify(reqDraft())});
-  const data = await res.json();
-  if (!res.ok) { err.textContent = data.error || '保存失败'; return; }
-  DATA = data;
+  const data = await postJson('/api/requirement', reqDraft());
+  if (data.error) { err.textContent = data.error; return; }
   if (data.saved && !data.saved.ok) {
     // 分数已经按新需求重算了，但没写进库——如实说清楚，别让人以为存上了
     err.textContent = '已按新需求重新打分，但没能存进本地库：' + (data.saved.error || '未知原因');
+    DATA = data;
     document.getElementById('req').textContent = data.req.name;
     render();
     return;
   }
-  const citySel = document.getElementById('city'), degSel = document.getElementById('deg');
-  const keepCity = citySel.value, keepDeg = degSel.value;
-  citySel.length = 1; degSel.length = 1;
-  DEGS = data.facets.degrees;
-  data.facets.cities.forEach(c => citySel.add(new Option(c, c)));
-  DEGS.forEach(c => degSel.add(new Option(c + '及以上', c)));
-  citySel.value = keepCity; degSel.value = keepDeg;
-  CUR = null;
-  document.getElementById('side').classList.remove('on');
-  document.getElementById('req').textContent = data.req.name;
-  render();
+  applyPayload(data);
   closeEditor();
 }
 
 document.getElementById('editReq').onclick = openEditor;
+document.getElementById('exportCsv').onclick = () => { location.href = '/api/export.csv'; };
+
+function renderSchemes() {
+  const sel = document.getElementById('schemeSel');
+  const list = DATA.schemes || [];
+  sel.innerHTML = list.map(s => `<option value="${s.id}"${s.name === DATA.req.name ? ' selected' : ''}>${s.name}</option>`).join('');
+  sel.style.display = list.length > 1 ? '' : 'none';
+  sel.onchange = async () => {
+    const data = await postJson('/api/scheme', { id: sel.value });
+    if (data.error) { alert(data.error); return; }
+    applyPayload(data);
+    renderSchemes();
+  };
+}
 document.getElementById('cancelReq').onclick = closeEditor;
 document.getElementById('mask').onclick = closeEditor;
 document.getElementById('saveReq').onclick = saveReq;
 document.getElementById('addMust').onclick = () => condRow(document.getElementById('mustList'), null, false);
 document.getElementById('addNice').onclick = () => condRow(document.getElementById('niceList'), null, true);
 
-fetch('/api/board').then(r => r.json()).then(d => {
-  DATA = d;
-  DEGS = d.facets.degrees;
-  const citySel = document.getElementById('city'), degSel = document.getElementById('deg');
-  d.facets.cities.forEach(c => citySel.add(new Option(c, c)));
-  DEGS.forEach(c => degSel.add(new Option(c + '及以上', c)));
-  document.getElementById('req').textContent = d.req.name;
-  render();
-});
+fetch('/api/board').then(r => r.json()).then(d => { applyPayload(d); });
 </script></body></html>
 """
 
@@ -333,6 +360,8 @@ class Board:
         req: Requirement,
         cands: list[Candidate] | None = None,
         on_save=None,
+        list_schemes=None,
+        load_scheme=None,
     ) -> None:
         self.req = req
         self.results = results
@@ -340,6 +369,8 @@ class Board:
         self.cands = {c.uid: c for c in (cands or [])}
         self._cand_list = list(cands or [])
         self.on_save = on_save
+        self.list_schemes = list_schemes
+        self.load_scheme = load_scheme
         self.save_error: str | None = None
 
     def apply(self, spec: dict) -> dict:
@@ -357,6 +388,24 @@ class Board:
             except Exception as exc:  # noqa: BLE001 - 页面照常可用，但要如实说没存上
                 self.save_error = str(exc) or exc.__class__.__name__
         return self.payload()
+
+    def switch_scheme(self, scheme_id: str) -> dict:
+        """切到另一份需求方案：从库里读出来，重新打分。不写库——切方案不是改方案。"""
+        if self.load_scheme is None:
+            raise KeyError("没有可切换的需求方案")
+        loaded = self.load_scheme(scheme_id)
+        if not loaded:
+            raise KeyError(f"找不到需求方案: {scheme_id}")
+        req, _spec = loaded
+        results = rank(self._cand_list, req)
+        self.req = req
+        self.results = results
+        self.by_uid = {r.uid: r for r in results}
+        self.save_error = None
+        return self.payload()
+
+    def export_csv(self) -> str:
+        return to_csv(self.results, self.cands)
 
     def payload(self) -> dict:
         cities: set[str] = set()
@@ -380,6 +429,7 @@ class Board:
                 {**r.__dict__, "cand": asdict(self.cands[r.uid]) if r.uid in self.cands else {}}
                 for r in self.results
             ],
+            "schemes": self.list_schemes() if self.list_schemes else [],
             "saved": {"ok": self.save_error is None, "error": self.save_error},
         }
 
@@ -405,6 +455,15 @@ def make_handler(board: Board):
         def do_GET(self) -> None:
             if self.path in ("/", "/index.html"):
                 self._send(200, PAGE.encode("utf-8"), "text/html; charset=utf-8")
+            elif self.path.startswith("/api/export.csv"):
+                body = ("\ufeff" + board.export_csv()).encode("utf-8")
+                name = filename_for(board.req)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Disposition", f"attachment; filename=\"export.csv\"; filename*=UTF-8''{quote(name)}")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             elif self.path == "/api/board":
                 body = json.dumps(board.payload(), ensure_ascii=False).encode("utf-8")
                 self._send(200, body, "application/json; charset=utf-8")
@@ -414,6 +473,9 @@ def make_handler(board: Board):
         def do_POST(self) -> None:
             if self.path == "/api/requirement":
                 self._post_requirement()
+                return
+            if self.path == "/api/scheme":
+                self._post_scheme()
                 return
             if self.path != "/api/draft":
                 self._send(404, b'{"error":"not found"}', "application/json")
@@ -443,6 +505,22 @@ def make_handler(board: Board):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self._send(200, body, "application/json; charset=utf-8")
 
+        def _post_scheme(self) -> None:
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                data = json.loads(self.rfile.read(n) or b"{}")
+                payload = board.switch_scheme(str(data.get("id") or ""))
+            except KeyError as exc:
+                self._send(404, json.dumps({"error": str(exc)}, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8")
+                return
+            except json.JSONDecodeError:
+                self._send(400, json.dumps({"error": "请求不是合法 JSON"}, ensure_ascii=False).encode("utf-8"),
+                           "application/json; charset=utf-8")
+                return
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self._send(200, body, "application/json; charset=utf-8")
+
     return Handler
 
 
@@ -453,7 +531,9 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8686,
     on_save=None,
+    list_schemes=None,
+    load_scheme=None,
 ):
-    board = Board(results, req, cands, on_save=on_save)
+    board = Board(results, req, cands, on_save=on_save, list_schemes=list_schemes, load_scheme=load_scheme)
     httpd = ThreadingHTTPServer((host, port), make_handler(board))
     return httpd
